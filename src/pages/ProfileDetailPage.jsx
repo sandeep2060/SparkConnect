@@ -41,6 +41,7 @@ import Button from '../components/Button';
 import Modal from '../components/Modal';
 import ReportModal from '../components/ReportModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { playFriendRequestSound, playFriendAcceptSound } from '../utils/sound';
 
 export const ProfileDetailPage = () => {
   const { id } = useParams();
@@ -149,8 +150,11 @@ export const ProfileDetailPage = () => {
 
   const handleLike = async () => {
     try {
-      await likeUserApi(user.id);
+      const res = await likeUserApi(user.id);
       setIsLiked(true);
+      if (res?.isMatch) {
+        playFriendAcceptSound();
+      }
     } catch (e) {
       console.error(e);
     }
@@ -165,6 +169,7 @@ export const ProfileDetailPage = () => {
     setIsSocialLoading(true);
     try {
       await sendFriendRequestApi(user.id);
+      playFriendRequestSound();
       setRelationship((prev) => ({ ...prev, friendshipStatus: 'pending_sent' }));
     } catch (e) {
       console.error(e);
@@ -176,7 +181,8 @@ export const ProfileDetailPage = () => {
   const handleAcceptFriendRequest = async () => {
     setIsSocialLoading(true);
     try {
-      await acceptFriendRequestApi(user.id);
+      const res = await acceptFriendRequestApi(user.id);
+      playFriendAcceptSound();
       setRelationship((prev) => ({ ...prev, friendshipStatus: 'friends' }));
     } catch (e) {
       console.error(e);

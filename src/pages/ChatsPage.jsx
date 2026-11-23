@@ -243,7 +243,7 @@ export const ChatsPage = () => {
     // Optimistic message update
     const optimisticMsg = {
       id: 'temp_' + Date.now(),
-      senderId: 'current_user',
+      senderId: currentUser?.id || 'current_user',
       text: textToSend,
       type: 'text',
       disappearing,
@@ -310,7 +310,7 @@ export const ChatsPage = () => {
 
     const voiceMsg = {
       id: 'temp_voice_' + Date.now(),
-      senderId: 'current_user',
+      senderId: currentUser?.id || 'current_user',
       type: 'voice',
       audioDuration: durationStr,
       disappearing,
@@ -401,7 +401,7 @@ export const ChatsPage = () => {
 
     const optimisticMedia = {
       id: 'temp_media_' + Date.now(),
-      senderId: 'current_user',
+      senderId: currentUser?.id || 'current_user',
       type: isViewOnce ? 'view_once' : 'image',
       viewLimit: limitNum,
       viewsRemaining: limitNum,
@@ -1008,7 +1008,7 @@ export const ChatsPage = () => {
                   <ChatBubble
                     key={msg.id}
                     message={msg}
-                    isMine={msg.senderId === 'current_user'}
+                    isMine={msg.senderId === currentUser?.id || msg.senderId === 'current_user'}
                     partnerAvatar={activeChat.partner?.avatar}
                     onOpenEphemeralMedia={(mediaMsg) => setViewingMediaMessage(mediaMsg)}
                   />

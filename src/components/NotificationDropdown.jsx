@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Volume2,
   Trash2,
+  Sparkles,
+  Heart,
 } from 'lucide-react';
 import { useNotificationStore } from '../store/notificationStore';
 import {
@@ -30,9 +32,15 @@ export const NotificationDropdown = () => {
     acceptFriendRequest,
     declineFriendRequest,
     clearNotifications,
+    syncNotifications,
   } = useNotificationStore();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  // Sync notifications on mount & when dropdown opens
+  useEffect(() => {
+    syncNotifications();
+  }, [syncNotifications]);
 
   // Close when clicking outside
   useEffect(() => {
@@ -81,7 +89,7 @@ export const NotificationDropdown = () => {
           <button
             type="button"
             onClick={closeDropdown}
-            className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="p-1 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -105,7 +113,13 @@ export const NotificationDropdown = () => {
             return (
               <div
                 key={notif.id}
-                onClick={() => markAsRead(notif.id)}
+                onClick={() => {
+                  markAsRead(notif.id);
+                  if (notif.actionUrl && notif.type !== 'friend_request') {
+                    closeDropdown();
+                    navigate(notif.actionUrl);
+                  }
+                }}
                 className={`p-3 rounded-2xl transition-all flex items-start gap-3 hover:bg-gray-900/50 cursor-pointer ${
                   !notif.read ? 'bg-pink-950/20 border-l-2 border-pink-500' : ''
                 }`}
@@ -130,6 +144,11 @@ export const NotificationDropdown = () => {
                   {notif.type === 'friend_accept' && (
                     <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-600 text-white flex items-center justify-center">
                       <UserCheck className="w-2.5 h-2.5" />
+                    </div>
+                  )}
+                  {notif.type === 'match' && (
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-tr from-pink-500 to-rose-600 text-white flex items-center justify-center">
+                      <Heart className="w-2.5 h-2.5 fill-current" />
                     </div>
                   )}
                   {notif.type === 'system' && (
@@ -176,14 +195,45 @@ export const NotificationDropdown = () => {
                         </>
                       )}
                       {notif.status === 'accepted' && (
-                        <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" />
-                          <span>Friends</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                            <UserCheck className="w-3 h-3" />
+                            <span>Friends</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeDropdown();
+                              navigate(`/app/chats/${notif.senderId}`);
+                            }}
+                            className="px-2.5 py-0.5 rounded-lg bg-pink-600 hover:bg-pink-700 text-white text-[11px] font-bold transition-all cursor-pointer"
+                          >
+                            Message
+                          </button>
+                        </div>
                       )}
                       {notif.status === 'declined' && (
                         <span className="text-[11px] text-gray-500">Request declined</span>
                       )}
+                    </div>
+                  )}
+
+                  {/* Actions for Match */}
+                  {notif.type === 'match' && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeDropdown();
+                          navigate(notif.actionUrl || `/app/chats/${notif.senderId}`);
+                        }}
+                        className="px-3 py-1 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white text-xs font-bold shadow-md shadow-pink-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                        <span>Chat Now</span>
+                      </button>
                     </div>
                   )}
 
@@ -195,7 +245,7 @@ export const NotificationDropdown = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           closeDropdown();
-                          navigate(notif.actionUrl || '/app/messages');
+                          navigate(notif.actionUrl || `/app/chats/${notif.senderId}`);
                         }}
                         className="px-3 py-1 rounded-xl bg-gray-800 hover:bg-pink-600 text-gray-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                       >
@@ -228,7 +278,7 @@ export const NotificationDropdown = () => {
         )}
       </div>
 
-      {/* Footer / Audio Preview Quick Test (helps user verify sounds) */}
+      {/* Footer / Audio Preview Quick Test */}
       <div className="p-2.5 bg-gray-900/80 border-t border-gray-800/80 flex items-center justify-between text-[11px] text-gray-400">
         <div className="flex items-center gap-1">
           <Volume2 className="w-3.5 h-3.5 text-pink-400" />
@@ -238,7 +288,7 @@ export const NotificationDropdown = () => {
           <button
             type="button"
             onClick={playMessageSound}
-            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold"
+            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold cursor-pointer"
             title="Test message received sound"
           >
             Msg
@@ -246,7 +296,7 @@ export const NotificationDropdown = () => {
           <button
             type="button"
             onClick={playFriendRequestSound}
-            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold"
+            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold cursor-pointer"
             title="Test friend request sound"
           >
             Req
@@ -254,7 +304,7 @@ export const NotificationDropdown = () => {
           <button
             type="button"
             onClick={playFriendAcceptSound}
-            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold"
+            className="px-2 py-0.5 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[10px] font-bold cursor-pointer"
             title="Test friend accept sound"
           >
             Accept
@@ -263,7 +313,7 @@ export const NotificationDropdown = () => {
             <button
               type="button"
               onClick={clearNotifications}
-              className="p-1 text-gray-500 hover:text-rose-400 transition-colors ml-1"
+              className="p-1 text-gray-500 hover:text-rose-400 transition-colors ml-1 cursor-pointer"
               title="Clear all notices"
             >
               <Trash2 className="w-3.5 h-3.5" />

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Sparkles, Bell } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
@@ -8,7 +8,17 @@ import NotificationDropdown from './NotificationDropdown';
 
 export const Navbar = ({ title }) => {
   const { user } = useAuthStore();
-  const { notifications, isDropdownOpen, toggleDropdown } = useNotificationStore();
+  const { notifications, isDropdownOpen, toggleDropdown, syncNotifications } = useNotificationStore();
+
+  useEffect(() => {
+    if (user?.id) {
+      syncNotifications();
+      const interval = setInterval(() => {
+        syncNotifications();
+      }, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id, syncNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

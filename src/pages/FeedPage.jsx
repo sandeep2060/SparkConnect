@@ -103,8 +103,9 @@ export const FeedPage = () => {
                 variant="primary"
                 fullWidth
                 onClick={() => {
+                  const targetId = matchNotification.id;
                   setMatchNotification(null);
-                  navigate(`/app/chats`);
+                  navigate(`/app/chats/${targetId}`);
                 }}
               >
                 Send Message

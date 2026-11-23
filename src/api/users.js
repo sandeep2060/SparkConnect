@@ -206,18 +206,21 @@ export const getUserByIdApi = async (id) => {
 
 // 4. Request Reveal from Neon Lakebase Postgres
 export const requestRevealApi = async (userId) => {
+  const currentUserId = useAuthStore.getState().user?.id;
+  if (!currentUserId || !userId) return { success: false };
+
   try {
     const sql = getNeonSql();
     await sql`
       INSERT INTO reveal_requests (requester_id, stranger_id, status)
-      VALUES ('current_user', ${userId}, 'approved')
+      VALUES (${currentUserId}, ${userId}, 'approved')
       ON CONFLICT (requester_id, stranger_id) DO UPDATE SET status = 'approved';
     `;
   } catch (err) {
     console.warn('Neon reveal notice:', err.message);
   }
 
-  await sleep(300);
+  await sleep(200);
   return {
     success: true,
     userId,
@@ -234,7 +237,7 @@ export const updateUserProfileApi = async (updates) => {
 
   try {
     const sql = getNeonSql();
-    const userId = updates.id;
+    const userId = updates.id || useAuthStore.getState().user?.id;
 
     if (userId && userId !== 'current_user') {
       const rows = await sql`
@@ -263,27 +266,12 @@ export const updateUserProfileApi = async (updates) => {
       if (rows && rows.length > 0) {
         return mapUserRow(rows[0]);
       }
-    } else {
-      await sql`
-        UPDATE users
-        SET 
-          name = COALESCE(${updates.name || null}, name),
-          display_name = COALESCE(${updates.name || null}, display_name),
-          username = COALESCE(${updates.username || null}, username),
-          phone = COALESCE(${updates.phone || null}, phone),
-          bio = COALESCE(${updates.bio || null}, bio),
-          mode = COALESCE(${updates.mode || null}, mode),
-          pseudonym = COALESCE(${updates.pseudonym || null}, pseudonym),
-          avatar = COALESCE(${updates.avatar || null}, avatar),
-          updated_at = NOW()
-        WHERE id = '00000000-0000-0000-0000-000000000001';
-      `;
     }
   } catch (err) {
     console.warn('Neon update profile notice:', err.message);
   }
 
-  await sleep(300);
+  await sleep(200);
   const currentAuthUser = useAuthStore.getState().user;
   return {
     ...(currentAuthUser || {}),
@@ -291,40 +279,87 @@ export const updateUserProfileApi = async (updates) => {
   };
 };
 
-// 6. Like / Swipe User in Neon Lakebase Postgres
+// 6. Like / Swipe User in Neon Lakebase Postgres (Real mutual matching & conversation creation)
 export const likeUserApi = async (userId) => {
-  let isMatch = Math.random() > 0.4;
+  const currentUserId = useAuthStore.getState().user?.id;
+  if (!currentUserId || !userId || currentUserId === userId) {
+    return { success: false, isMatch: false };
+  }
+
+  let isMatch = false;
   try {
     const sql = getNeonSql();
-    await sql`
-      INSERT INTO swipes (user_id, target_user_id, action, is_match)
-      VALUES ('current_user', ${userId}, 'like', ${isMatch})
-      ON CONFLICT (user_id, target_user_id) 
-      DO UPDATE SET action = 'like', is_match = ${isMatch};
+
+    // Check if partner already liked the current user (Mutual Match!)
+    const checkRows = await sql`
+      SELECT id FROM swipes
+      WHERE user_id = ${userId} AND target_user_id = ${currentUserId} AND action = 'like'
+      LIMIT 1;
     `;
+    isMatch = checkRows.length > 0;
+
+    // Record or update this like
+    await sql`
+      INSERT INTO swipes (user_id, target_user_id, action, is_match, created_at)
+      VALUES (${currentUserId}, ${userId}, 'like', ${isMatch}, NOW())
+      ON CONFLICT (user_id, target_user_id) 
+      DO UPDATE SET action = 'like', is_match = ${isMatch}, created_at = NOW();
+    `;
+
+    // If mutual match, update the other swipe & ensure a conversation row exists!
+    if (isMatch) {
+      await sql`
+        UPDATE swipes SET is_match = TRUE
+        WHERE user_id = ${userId} AND target_user_id = ${currentUserId};
+      `;
+
+      // Check if conversation row exists
+      const convCheck = await sql`
+        SELECT id FROM conversations
+        WHERE (user_one_id = ${currentUserId} AND user_two_id = ${userId})
+           OR (user_one_id = ${userId} AND user_two_id = ${currentUserId})
+        LIMIT 1;
+      `;
+
+      let convId = convCheck.length > 0 ? convCheck[0].id : null;
+      if (!convId) {
+        convId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `conv_${Date.now()}`;
+        await sql`
+          INSERT INTO conversations (
+            id, user_one_id, user_two_id, disappearing_setting, streak_count, created_at, updated_at
+          ) VALUES (
+            ${convId}, ${currentUserId}, ${userId}, 'off', 0, NOW(), NOW()
+          )
+          ON CONFLICT (id) DO NOTHING;
+        `;
+      }
+    }
   } catch (err) {
     console.warn('Neon swipe like notice:', err.message);
   }
 
-  await sleep(200);
+  await sleep(150);
   return { success: true, isMatch };
 };
 
 // 7. Pass User in Neon Lakebase Postgres
 export const passUserApi = async (userId) => {
+  const currentUserId = useAuthStore.getState().user?.id;
+  if (!currentUserId || !userId) return { success: true };
+
   try {
     const sql = getNeonSql();
     await sql`
-      INSERT INTO swipes (user_id, target_user_id, action, is_match)
-      VALUES ('current_user', ${userId}, 'pass', FALSE)
+      INSERT INTO swipes (user_id, target_user_id, action, is_match, created_at)
+      VALUES (${currentUserId}, ${userId}, 'pass', FALSE, NOW())
       ON CONFLICT (user_id, target_user_id) 
-      DO UPDATE SET action = 'pass', is_match = FALSE;
+      DO UPDATE SET action = 'pass', is_match = FALSE, created_at = NOW();
     `;
   } catch (err) {
     console.warn('Neon swipe pass notice:', err.message);
   }
 
-  await sleep(200);
+  await sleep(150);
   return { success: true };
 };
 
