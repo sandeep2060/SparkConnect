@@ -21,9 +21,71 @@ export const ChatBubble = ({
   partnerAvatar,
   onOpenEphemeralMedia,
   onOpenMedia,
+  onDisappear,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [secondsRemaining, setSecondsRemaining] = useState(null);
+
+  // Live Disappearing Countdown
+  useEffect(() => {
+    if (!message.disappearing || message.disappearing === 'off') {
+      setSecondsRemaining(null);
+      return;
+    }
+
+    const getLifetimeSeconds = () => {
+      switch (message.disappearing) {
+        case '10s': return 10;
+        case 'after_seen': return 15;
+        case '1m': return 60;
+        case 'custom':
+        case '1h': return 3600;
+        case '24h': return 86400;
+        case '7d': return 604800;
+        default: return null;
+      }
+    };
+
+    const lifetime = getLifetimeSeconds();
+    if (!lifetime) return;
+
+    // Base time: for '10s' or 'after_seen', if seenAt exists, count down from seenAt, else from timestamp
+    const baseTime = (message.disappearing === 'after_seen' || message.disappearing === '10s') && message.seenAt
+      ? new Date(message.seenAt).getTime()
+      : new Date(message.timestamp).getTime();
+
+    const updateCountdown = () => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - baseTime) / 1000);
+      const remaining = Math.max(0, lifetime - elapsed);
+      setSecondsRemaining(remaining);
+
+      if (remaining <= 0) {
+        if (onDisappear) {
+          onDisappear(message.id);
+        }
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [message.id, message.disappearing, message.seenAt, message.timestamp, onDisappear]);
+
+  const formatRemainingTime = (secs) => {
+    if (secs == null) return '';
+    if (secs <= 0) return '0s';
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) {
+      const mins = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `${mins}m ${s > 0 ? `${s}s` : ''}`;
+    }
+    const hrs = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return `${hrs}h ${m > 0 ? `${m}m` : ''}`;
+  };
 
   // Audio playback simulator
   useEffect(() => {
@@ -57,7 +119,7 @@ export const ChatBubble = ({
       return (
         <span className="flex items-center gap-1 text-sky-300 font-semibold" title={message.seenAt || 'Seen recently'}>
           <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>{message.seenStatusText || 'Seen 5m ago'}</span>
+          <span>{message.seenStatusText || 'Seen'}</span>
         </span>
       );
     }
@@ -114,11 +176,15 @@ export const ChatBubble = ({
           }
         `}
       >
-        {/* Disappearing timer badge if active */}
-        {message.disappearing && (
-          <div className="flex items-center gap-1 text-[10px] opacity-80 mb-1 pb-1 border-b border-white/10">
-            <Flame className="w-3 h-3 text-amber-300" />
-            <span>Disappearing ({message.disappearing})</span>
+        {/* Disappearing timer badge if active with live countdown */}
+        {message.disappearing && message.disappearing !== 'off' && (
+          <div className="flex items-center gap-1.5 text-[10px] font-medium opacity-90 mb-1.5 pb-1 border-b border-white/10 select-none">
+            <Flame className="w-3 h-3 text-amber-300 animate-pulse shrink-0" />
+            <span className="text-amber-200">
+              {secondsRemaining !== null
+                ? `Vanish in ${formatRemainingTime(secondsRemaining)}`
+                : `Disappearing (${message.disappearing})`}
+            </span>
           </div>
         )}
 

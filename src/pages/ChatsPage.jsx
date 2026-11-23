@@ -30,6 +30,8 @@ import {
 import {
   getConversationsApi,
   getConversationByIdApi,
+  syncChatMessagesApi,
+  updateDisappearingSettingApi,
   sendMessageApi,
   simulatePartnerReplyApi,
 } from '../api/chats';
@@ -111,6 +113,19 @@ export const ChatsPage = () => {
   });
 
   const messagesEndRef = useRef(null);
+  const activeChatRef = useRef(activeChat);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  const isStrangerPartner =
+    activeChat?.partner?.mode === 'stranger' &&
+    !activeChat?.partner?.revealed &&
+    !isUserRevealed(activeChat?.partner?.id);
+  const partnerDisplayName = isStrangerPartner
+    ? activeChat?.partner?.pseudonym
+    : (activeChat?.partner?.name || 'Chat Partner');
 
   // Scroll to bottom of chat
   const scrollToBottom = () => {
@@ -168,6 +183,107 @@ export const ChatsPage = () => {
       setActiveChat(null);
     }
   }, [routeChatId]);
+
+  // Live Reactive Polling for Active Chat (receives messages automatically without refresh)
+  useEffect(() => {
+    if (!activeChat?.id) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const syncResult = await syncChatMessagesApi(activeChat.id);
+        if (!syncResult) return;
+
+        const currentChat = activeChatRef.current;
+        if (!currentChat || currentChat.id !== activeChat.id) return;
+
+        // Check if partner sent a new message
+        const currentMsgIds = new Set((currentChat.messages || []).map((m) => m.id));
+        const newPartnerMessages = (syncResult.messages || []).filter(
+          (m) =>
+            !currentMsgIds.has(m.id) &&
+            m.senderId !== currentUser?.id &&
+            m.senderId !== 'current_user' &&
+            m.status !== 'system'
+        );
+
+        if (newPartnerMessages.length > 0) {
+          playMessageSound();
+          const latestNew = newPartnerMessages[newPartnerMessages.length - 1];
+          triggerBrowserNotification(
+            `New message from ${partnerDisplayName || 'Chat Partner'}`,
+            latestNew.text || 'Sent a message',
+            'message'
+          );
+        }
+
+        // Check if messages or disappearing setting updated
+        const currentMsgs = currentChat.messages || [];
+        const nextMsgs = syncResult.messages || [];
+        const messagesChanged =
+          currentMsgs.length !== nextMsgs.length ||
+          nextMsgs.some((m, idx) => {
+            const cur = currentMsgs[idx];
+            return !cur || cur.id !== m.id || cur.status !== m.status || cur.seenStatusText !== m.seenStatusText;
+          });
+
+        if (messagesChanged || syncResult.disappearingSetting !== currentChat.disappearingSetting) {
+          setActiveChat((prev) => {
+            if (!prev || prev.id !== activeChat.id) return prev;
+            return {
+              ...prev,
+              messages: nextMsgs,
+              disappearingSetting: syncResult.disappearingSetting ?? prev.disappearingSetting,
+              streakCount: syncResult.streak?.streakCount ?? prev.streakCount,
+              streakExpiresAt: syncResult.streak?.streakExpiresAt ?? prev.streakExpiresAt,
+              streakExpiringSoon: syncResult.streak?.streakExpiringSoon ?? prev.streakExpiringSoon,
+              bothSentToday: syncResult.streak?.bothSentToday ?? prev.bothSentToday,
+              hoursRemaining: syncResult.streak?.hoursRemaining ?? prev.hoursRemaining,
+            };
+          });
+
+          // Also update lastMessage in sidebar conversations list
+          if (nextMsgs.length > 0) {
+            const lastMsg = nextMsgs[nextMsgs.length - 1];
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === activeChat.id
+                  ? { ...c, lastMessage: lastMsg, unreadCount: 0 }
+                  : c
+              )
+            );
+          }
+        }
+      } catch (err) {
+        // silent fail on polling error
+      }
+    }, 2000);
+
+    return () => clearInterval(intervalId);
+  }, [activeChat?.id, currentUser?.id, partnerDisplayName]);
+
+  // Periodic sidebar conversation sync (every 5 seconds to update unread counts and streaks across threads)
+  useEffect(() => {
+    const listInterval = setInterval(async () => {
+      try {
+        const freshList = await getConversationsApi();
+        if (freshList && freshList.length > 0) {
+          setConversations((prev) => {
+            return freshList.map((fresh) => {
+              // If this is currently active chat, keep unreadCount = 0
+              if (activeChatRef.current && activeChatRef.current.id === fresh.id) {
+                return { ...fresh, unreadCount: 0 };
+              }
+              return fresh;
+            });
+          });
+        }
+      } catch (e) {
+        // silent
+      }
+    }, 5000);
+
+    return () => clearInterval(listInterval);
+  }, []);
 
   // Load relationship status with active partner
   useEffect(() => {
@@ -553,7 +669,7 @@ export const ChatsPage = () => {
   };
 
   // Handle Disappearing Timer Save
-  const handleSaveDisappearingSetting = (newSetting) => {
+  const handleSaveDisappearingSetting = async (newSetting) => {
     if (!activeChat) return;
 
     setActiveChat((prev) => ({
@@ -570,6 +686,8 @@ export const ChatsPage = () => {
               : `⏱️ Messages now disappear ${
                   newSetting === 'after_seen'
                     ? 'immediately after being seen.'
+                    : newSetting === '10s'
+                    ? '10 seconds after opening 🔥'
                     : `after ${newSetting}.`
                 }`,
           timestamp: new Date().toISOString(),
@@ -577,20 +695,18 @@ export const ChatsPage = () => {
         },
       ],
     }));
+
+    try {
+      await updateDisappearingSettingApi(activeChat.id, newSetting);
+    } catch (err) {
+      console.error('Failed to update disappearing setting:', err);
+    }
   };
 
   const filteredConversations = conversations.filter((c) => {
     const partnerName = c.partner?.name || c.partner?.pseudonym || '';
     return partnerName.toLowerCase().includes(searchQuery.toLowerCase());
   });
-
-  const isStrangerPartner =
-    activeChat?.partner?.mode === 'stranger' &&
-    !activeChat?.partner?.revealed &&
-    !isUserRevealed(activeChat?.partner?.id);
-  const partnerDisplayName = isStrangerPartner
-    ? activeChat?.partner?.pseudonym
-    : activeChat?.partner?.name;
 
   const [isGeneratingIcebreaker, setIsGeneratingIcebreaker] = useState(false);
 
@@ -1022,6 +1138,15 @@ export const ChatsPage = () => {
                     partnerAvatar={activeChat.partner?.avatar}
                     onOpenEphemeralMedia={(mediaMsg) => setViewingMediaMessage(mediaMsg)}
                     onOpenMedia={(url) => setLightboxMediaUrl(url)}
+                    onDisappear={(msgId) => {
+                      setActiveChat((prev) => {
+                        if (!prev) return prev;
+                        return {
+                          ...prev,
+                          messages: prev.messages.filter((m) => m.id !== msgId),
+                        };
+                      });
+                    }}
                   />
                 );
               })}

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Timer, Check, Sparkles, Clock, Flame } from 'lucide-react';
 import Modal from './Modal';
 import Button from './Button';
 
 export const DISAPPEARING_OPTIONS = [
   { id: 'off', label: 'Off', desc: 'Messages remain in conversation permanently' },
+  { id: '10s', label: '10 Seconds', desc: 'Messages vanish 10 seconds after opening (Live Vanish Mode 🔥)' },
   { id: 'after_seen', label: 'After Seen', desc: 'Messages vanish immediately after the recipient opens them' },
   { id: '24h', label: '24 Hours', desc: 'Messages vanish 24 hours after being sent' },
   { id: '7d', label: '7 Days', desc: 'Messages vanish 7 days after being sent' },
@@ -18,6 +19,10 @@ export const DisappearingMessageModal = ({
   onSave,
 }) => {
   const [selected, setSelected] = useState(currentSetting);
+
+  useEffect(() => {
+    setSelected(currentSetting || 'off');
+  }, [currentSetting, isOpen]);
 
   const handleApply = () => {
     onSave(selected);

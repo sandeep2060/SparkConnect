@@ -1,4 +1,4 @@
-import { sleep } from '../utils/helpers';
+import { sleep, formatTimeAgo } from '../utils/helpers';
 import { getNeonSql } from './neon';
 import { mapUserRow } from './users';
 import { useAuthStore } from '../store/authStore';
@@ -26,6 +26,37 @@ const getCurrentUserId = () => {
 };
 
 let chatsMemoryFallback = [];
+
+/**
+ * Maps a database message row into a consistent frontend message object with real status & seen time
+ */
+export const mapMessageRow = (m) => {
+  const isRead = m.status === 'read' || !!m.seen_at || !!m.read_at;
+  const status = isRead ? 'read' : (m.status || 'delivered');
+  const seenAt = m.seen_at || m.read_at;
+
+  return {
+    id: m.id,
+    senderId: m.sender_id,
+    text: m.text || m.body || '',
+    type: m.type || 'text',
+    viewLimit: m.view_limit,
+    viewsRemaining: m.views_remaining,
+    mediaUrl: m.media_url,
+    audioDuration: m.audio_duration,
+    disappearing: m.disappearing,
+    timestamp: m.created_at,
+    seenAt,
+    readAt: m.read_at,
+    status,
+    seenStatusText:
+      status === 'read'
+        ? seenAt
+          ? `Seen ${formatTimeAgo(seenAt)}`
+          : 'Seen just now'
+        : undefined,
+  };
+};
 
 /**
  * Snapchat-style Streak Calculator
@@ -195,7 +226,7 @@ export const getConversationsApi = async () => {
   return [];
 };
 
-// 2. Get Single Conversation with Messages (loads or auto-creates direct chat)
+// 2. Get Single Conversation with Messages (loads, marks read, and purges expired messages)
 export const getConversationByIdApi = async (chatIdOrPartnerId) => {
   const currentUserId = getCurrentUserId();
   if (!currentUserId || !chatIdOrPartnerId) {
@@ -226,6 +257,33 @@ export const getConversationByIdApi = async (chatIdOrPartnerId) => {
 
     if (convRows && convRows.length > 0) {
       const conv = convRows[0];
+
+      // Mark partner's unread messages as read
+      await sql`
+        UPDATE messages
+        SET status = 'read', seen_at = COALESCE(seen_at, NOW()), read_at = COALESCE(read_at, NOW())
+        WHERE conversation_id = ${conv.id}
+          AND (sender_id::text != ${currentUserId} OR sender_id IS NULL)
+          AND (status != 'read' OR status IS NULL);
+      `;
+
+      // Purge expired disappearing messages
+      await sql`
+        DELETE FROM messages
+        WHERE conversation_id = ${conv.id}
+          AND disappearing IS NOT NULL
+          AND disappearing != 'off'
+          AND (
+            (disappearing = '10s' AND (seen_at < NOW() - INTERVAL '10 seconds' OR created_at < NOW() - INTERVAL '20 seconds'))
+            OR (disappearing = 'after_seen' AND (seen_at IS NOT NULL AND seen_at < NOW() - INTERVAL '15 seconds'))
+            OR (disappearing = '1m' AND created_at < NOW() - INTERVAL '1 minute')
+            OR (disappearing = '1h' AND created_at < NOW() - INTERVAL '1 hour')
+            OR (disappearing = 'custom' AND created_at < NOW() - INTERVAL '1 hour')
+            OR (disappearing = '24h' AND created_at < NOW() - INTERVAL '24 hours')
+            OR (disappearing = '7d' AND created_at < NOW() - INTERVAL '7 days')
+          );
+      `;
+
       const msgRows = await sql`
         SELECT * FROM messages
         WHERE conversation_id = ${conv.id}
@@ -261,19 +319,7 @@ export const getConversationByIdApi = async (chatIdOrPartnerId) => {
         streakExpiringSoon: streakCalc.streakExpiringSoon,
         bothSentToday: streakCalc.bothSentToday,
         hoursRemaining: streakCalc.hoursRemaining,
-        messages: msgRows.map((m) => ({
-          id: m.id,
-          senderId: m.sender_id,
-          text: m.text || m.body || '',
-          type: m.type || 'text',
-          viewLimit: m.view_limit,
-          viewsRemaining: m.views_remaining,
-          mediaUrl: m.media_url,
-          audioDuration: m.audio_duration,
-          disappearing: m.disappearing,
-          timestamp: m.created_at,
-          status: m.status || 'delivered',
-        })),
+        messages: msgRows.map(mapMessageRow),
       };
     }
 
@@ -348,32 +394,122 @@ export const getConversationByIdApi = async (chatIdOrPartnerId) => {
   return chat;
 };
 
-// 3. Send Message to Neon Lakebase Postgres (Updates Snapstreak)
+// 3. Real-Time Sync Messages: Marks partner messages as read & purges expired disappearing messages
+export const syncChatMessagesApi = async (chatId) => {
+  const currentUserId = getCurrentUserId();
+  if (!chatId) return null;
+
+  try {
+    const sql = getNeonSql();
+
+    // 1. Mark incoming unread messages as read
+    if (currentUserId) {
+      await sql`
+        UPDATE messages
+        SET status = 'read', seen_at = COALESCE(seen_at, NOW()), read_at = COALESCE(read_at, NOW())
+        WHERE conversation_id = ${chatId}
+          AND (sender_id::text != ${currentUserId} OR sender_id IS NULL)
+          AND (status != 'read' OR status IS NULL);
+      `;
+    }
+
+    // 2. Purge expired disappearing messages
+    await sql`
+      DELETE FROM messages
+      WHERE conversation_id = ${chatId}
+        AND disappearing IS NOT NULL
+        AND disappearing != 'off'
+        AND (
+          (disappearing = '10s' AND (seen_at < NOW() - INTERVAL '10 seconds' OR created_at < NOW() - INTERVAL '20 seconds'))
+          OR (disappearing = 'after_seen' AND (seen_at IS NOT NULL AND seen_at < NOW() - INTERVAL '15 seconds'))
+          OR (disappearing = '1m' AND created_at < NOW() - INTERVAL '1 minute')
+          OR (disappearing = '1h' AND created_at < NOW() - INTERVAL '1 hour')
+          OR (disappearing = 'custom' AND created_at < NOW() - INTERVAL '1 hour')
+          OR (disappearing = '24h' AND created_at < NOW() - INTERVAL '24 hours')
+          OR (disappearing = '7d' AND created_at < NOW() - INTERVAL '7 days')
+        );
+    `;
+
+    // 3. Query current messages
+    const msgRows = await sql`
+      SELECT * FROM messages
+      WHERE conversation_id = ${chatId}
+      ORDER BY created_at ASC;
+    `;
+
+    // 4. Query conversation metadata
+    const convRows = await sql`
+      SELECT disappearing_setting, streak_count, streak_updated_at, streak_expires_at, user_one_last_sent, user_two_last_sent
+      FROM conversations WHERE id = ${chatId} LIMIT 1;
+    `;
+
+    return {
+      messages: msgRows.map(mapMessageRow),
+      conversation: convRows[0] || {},
+    };
+  } catch (err) {
+    console.warn('Neon Postgres syncChatMessages notice:', err.message);
+    return null;
+  }
+};
+
+// 4. Update Disappearing Messages Setting in Postgres & announce via system message
+export const updateDisappearingSettingApi = async (chatId, setting) => {
+  const currentUserId = getCurrentUserId();
+  if (!chatId) return { success: false };
+
+  try {
+    const sql = getNeonSql();
+    await sql`
+      UPDATE conversations
+      SET disappearing_setting = ${setting}, updated_at = NOW()
+      WHERE id = ${chatId};
+    `;
+
+    const noticeText =
+      setting === 'off'
+        ? '⏱️ Disappearing messages turned off.'
+        : `⏱️ Messages in this chat now vanish ${
+            setting === '10s'
+              ? '10 seconds after opening (Live Vanish Mode 🔥).'
+              : setting === 'after_seen'
+              ? '15 seconds after opening.'
+              : `after ${setting}.`
+          }`;
+
+    const msgId = generateUuid();
+    if (isValidUuid(currentUserId)) {
+      await sql`
+        INSERT INTO messages (
+          id, conversation_id, sender_id, body, text, type, status, created_at
+        ) VALUES (
+          ${msgId}::uuid, ${chatId}, ${currentUserId}::uuid, ${noticeText}, ${noticeText}, 'text', 'system', NOW()
+        );
+      `;
+    } else {
+      await sql`
+        INSERT INTO messages (
+          id, conversation_id, body, text, type, status, created_at
+        ) VALUES (
+          ${msgId}::uuid, ${chatId}, ${noticeText}, ${noticeText}, 'text', 'system', NOW()
+        );
+      `;
+    }
+
+    return { success: true, setting, noticeText, msgId };
+  } catch (err) {
+    console.warn('Neon Postgres updateDisappearingSetting notice:', err.message);
+    return { success: false, setting };
+  }
+};
+
+// 5. Send Message to Neon Lakebase Postgres (Updates Snapstreak & Disappearing)
 export const sendMessageApi = async (chatId, payload) => {
   const currentUserId = getCurrentUserId();
   const messageData = typeof payload === 'string' ? { text: payload } : payload;
   const msgId = generateUuid();
   const text = messageData.text || '';
   const body = text || (messageData.mediaUrl ? '[Photo / Media]' : '[Message]');
-
-  const newMessage = {
-    id: msgId,
-    senderId: currentUserId,
-    text: text,
-    body: body,
-    type: messageData.type || 'text',
-    viewLimit: messageData.viewLimit || 1,
-    viewsRemaining:
-      messageData.viewsRemaining !== undefined
-        ? messageData.viewsRemaining
-        : messageData.viewLimit || 1,
-    mediaUrl: messageData.mediaUrl || null,
-    audioDuration: messageData.audioDuration || null,
-    disappearing: messageData.disappearing || null,
-    timestamp: new Date().toISOString(),
-    status: 'delivered',
-    seenStatusText: 'Delivered',
-  };
 
   let streakInfo = {
     streakCount: 0,
@@ -382,18 +518,25 @@ export const sendMessageApi = async (chatId, payload) => {
     streakExpiringSoon: false,
   };
 
+  let effectiveDisappearing = messageData.disappearing || null;
+
   try {
     const sql = getNeonSql();
 
-    // Query existing conversation streak values
+    // Query existing conversation streak values & disappearing setting
     const convRows = await sql`
-      SELECT id, user_one_id, user_two_id, streak_count, streak_updated_at, streak_expires_at, user_one_last_sent, user_two_last_sent
+      SELECT id, user_one_id, user_two_id, disappearing_setting, streak_count, streak_updated_at, streak_expires_at, user_one_last_sent, user_two_last_sent
       FROM conversations WHERE id = ${chatId} LIMIT 1;
     `;
 
     if (convRows.length > 0) {
       const conv = convRows[0];
       const isUserOne = conv.user_one_id === currentUserId;
+
+      if (!effectiveDisappearing && conv.disappearing_setting && conv.disappearing_setting !== 'off') {
+        effectiveDisappearing = conv.disappearing_setting;
+      }
+
       streakInfo = calculateSnapstreak({
         streakCount: conv.streak_count,
         streakUpdatedAt: conv.streak_updated_at,
@@ -436,7 +579,26 @@ export const sendMessageApi = async (chatId, payload) => {
       }
     }
 
-    // Insert Message (body is NOT NULL, id is UUID, sender_id is UUID if valid)
+    const newMessage = {
+      id: msgId,
+      senderId: currentUserId,
+      text: text,
+      body: body,
+      type: messageData.type || 'text',
+      viewLimit: messageData.viewLimit || 1,
+      viewsRemaining:
+        messageData.viewsRemaining !== undefined
+          ? messageData.viewsRemaining
+          : messageData.viewLimit || 1,
+      mediaUrl: messageData.mediaUrl || null,
+      audioDuration: messageData.audioDuration || null,
+      disappearing: effectiveDisappearing !== 'off' ? effectiveDisappearing : null,
+      timestamp: new Date().toISOString(),
+      status: 'delivered', // Real delivered status saved to server
+      seenStatusText: 'Delivered',
+    };
+
+    // Insert Message (status = delivered)
     if (isValidUuid(currentUserId)) {
       await sql`
         INSERT INTO messages (
@@ -462,33 +624,34 @@ export const sendMessageApi = async (chatId, payload) => {
         );
       `;
     }
+
+    return {
+      ...newMessage,
+      streak: streakInfo,
+    };
   } catch (err) {
     console.warn('Neon Postgres sendMessage notice:', err.message);
   }
 
-  // Update memory fallback
-  const targetIndex = chatsMemoryFallback.findIndex((c) => c.id === chatId);
-  if (targetIndex !== -1) {
-    chatsMemoryFallback[targetIndex].messages.push(newMessage);
-    chatsMemoryFallback[targetIndex].streakCount = streakInfo.streakCount;
-    chatsMemoryFallback[targetIndex].bothSentToday = streakInfo.bothSentToday;
-    chatsMemoryFallback[targetIndex].streakExpiringSoon = streakInfo.streakExpiringSoon;
-  }
-
-  await sleep(150);
   return {
-    ...newMessage,
+    id: msgId,
+    senderId: currentUserId,
+    text,
+    type: messageData.type || 'text',
+    timestamp: new Date().toISOString(),
+    status: 'delivered',
     streak: streakInfo,
   };
 };
 
-// 4. Simulate Partner Snapping Back (Mutual Message triggers Snapstreak increase!)
+// 6. Simulate Partner Snapping Back (Mutual Message triggers Snapstreak increase & marks user messages as read!)
 export const simulatePartnerReplyApi = async (chatId, customText) => {
   const currentUserId = getCurrentUserId();
   const msgId = generateUuid();
   const replyText = customText || 'Snap back! Keeping our streak on fire 🔥⚡';
 
   let partnerId = null;
+  let effectiveDisappearing = null;
   let streakInfo = {
     streakCount: 1,
     streakExtended: true,
@@ -499,7 +662,7 @@ export const simulatePartnerReplyApi = async (chatId, customText) => {
   try {
     const sql = getNeonSql();
     const convRows = await sql`
-      SELECT id, user_one_id, user_two_id, streak_count, streak_updated_at, streak_expires_at, user_one_last_sent, user_two_last_sent
+      SELECT id, user_one_id, user_two_id, disappearing_setting, streak_count, streak_updated_at, streak_expires_at, user_one_last_sent, user_two_last_sent
       FROM conversations WHERE id = ${chatId} LIMIT 1;
     `;
 
@@ -507,6 +670,10 @@ export const simulatePartnerReplyApi = async (chatId, customText) => {
       const conv = convRows[0];
       const isUserOne = conv.user_one_id === currentUserId;
       partnerId = isUserOne ? conv.user_two_id : conv.user_one_id;
+
+      if (conv.disappearing_setting && conv.disappearing_setting !== 'off') {
+        effectiveDisappearing = conv.disappearing_setting;
+      }
 
       streakInfo = calculateSnapstreak({
         streakCount: conv.streak_count,
@@ -549,20 +716,33 @@ export const simulatePartnerReplyApi = async (chatId, customText) => {
       }
     }
 
+    // Mark previous user messages as 'read' by partner!
+    if (partnerId) {
+      await sql`
+        UPDATE messages
+        SET status = 'read', seen_at = COALESCE(seen_at, NOW()), read_at = COALESCE(read_at, NOW())
+        WHERE conversation_id = ${chatId}
+          AND (sender_id::text != ${partnerId} OR sender_id IS NULL)
+          AND (status != 'read' OR status IS NULL);
+      `;
+    }
+
     if (partnerId && isValidUuid(partnerId)) {
       await sql`
         INSERT INTO messages (
-          id, conversation_id, sender_id, body, text, type, status, created_at
+          id, conversation_id, sender_id, body, text, type, disappearing, status, created_at
         ) VALUES (
-          ${msgId}::uuid, ${chatId}, ${partnerId}::uuid, ${replyText}, ${replyText}, 'text', 'delivered', NOW()
+          ${msgId}::uuid, ${chatId}, ${partnerId}::uuid, ${replyText}, ${replyText}, 'text',
+          ${effectiveDisappearing}, 'delivered', NOW()
         );
       `;
     } else {
       await sql`
         INSERT INTO messages (
-          id, conversation_id, body, text, type, status, created_at
+          id, conversation_id, body, text, type, disappearing, status, created_at
         ) VALUES (
-          ${msgId}::uuid, ${chatId}, ${replyText}, ${replyText}, 'text', 'delivered', NOW()
+          ${msgId}::uuid, ${chatId}, ${replyText}, ${replyText}, 'text',
+          ${effectiveDisappearing}, 'delivered', NOW()
         );
       `;
     }
@@ -575,16 +755,10 @@ export const simulatePartnerReplyApi = async (chatId, customText) => {
     senderId: partnerId || 'partner',
     text: replyText,
     type: 'text',
+    disappearing: effectiveDisappearing,
     timestamp: new Date().toISOString(),
     status: 'delivered',
   };
-
-  const targetIndex = chatsMemoryFallback.findIndex((c) => c.id === chatId);
-  if (targetIndex !== -1) {
-    chatsMemoryFallback[targetIndex].messages.push(partnerMsg);
-    chatsMemoryFallback[targetIndex].streakCount = streakInfo.streakCount;
-    chatsMemoryFallback[targetIndex].bothSentToday = true;
-  }
 
   await sleep(200);
   return {
@@ -593,7 +767,7 @@ export const simulatePartnerReplyApi = async (chatId, customText) => {
   };
 };
 
-// 5. Safety Check-in Logged to Neon Lakebase Postgres
+// 7. Safety Check-in Logged to Neon Lakebase Postgres
 export const safetyCheckinApi = async ({ contactName, contactPhone, notes }) => {
   const currentUserId = getCurrentUserId();
   try {
@@ -608,7 +782,7 @@ export const safetyCheckinApi = async ({ contactName, contactPhone, notes }) => 
   return { success: true };
 };
 
-// 6. Report User Logged to Neon Lakebase Postgres
+// 8. Report User Logged to Neon Lakebase Postgres
 export const reportUserApi = async ({ reportedUserId, reason, details }) => {
   const currentUserId = getCurrentUserId();
   const reportId = generateUuid();
@@ -639,9 +813,12 @@ export const reportUserApi = async ({ reportedUserId, reason, details }) => {
 };
 
 export default {
+  mapMessageRow,
   calculateSnapstreak,
   getConversationsApi,
   getConversationByIdApi,
+  syncChatMessagesApi,
+  updateDisappearingSettingApi,
   sendMessageApi,
   simulatePartnerReplyApi,
   safetyCheckinApi,
