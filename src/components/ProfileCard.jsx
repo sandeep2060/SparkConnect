@@ -118,7 +118,7 @@ export const ProfileCard = ({
 
         {/* Content at bottom of image */}
         <div className="absolute bottom-3 inset-x-3 z-10">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
             <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight drop-shadow">
               {displayName}
             </h3>
@@ -127,7 +127,19 @@ export const ProfileCard = ({
                 {displayAge}
               </span>
             )}
+            {!isStranger && user.username && (
+              <span className="text-xs font-mono text-pink-300/90 font-medium drop-shadow bg-black/40 px-1.5 py-0.5 rounded">
+                @{user.username}
+              </span>
+            )}
           </div>
+
+          {user._searchMatch?.matchedReason && (
+            <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/40 border border-purple-400/50 backdrop-blur-md text-[10px] font-bold text-purple-200 drop-shadow">
+              <Sparkles className="w-2.5 h-2.5 text-pink-300 shrink-0" />
+              <span>{user._searchMatch.matchedReason}</span>
+            </div>
+          )}
 
           <p className="text-xs text-gray-300 line-clamp-2 mt-1 drop-shadow">
             {user.bio}

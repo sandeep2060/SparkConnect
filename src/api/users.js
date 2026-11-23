@@ -2,6 +2,21 @@ import { sleep } from '../utils/helpers.js';
 import { MOCK_USERS } from '../utils/mockData.js';
 import { getNeonSql } from './neon.js';
 import { useAuthStore } from '../store/authStore.js';
+import { searchAndRankUsers } from '../utils/searchFuzzy.js';
+
+// Helper to calculate age accurately from date of birth
+export const calculateAgeFromDob = (dob) => {
+  if (!dob) return 24;
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return 24;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age > 0 ? age : 24;
+};
 
 // Helper to map Postgres row to user object
 export const mapUserRow = (r) => ({
@@ -13,7 +28,7 @@ export const mapUserRow = (r) => ({
   phone: r.phone || r.phone_number || '',
   phoneNumber: r.phone || r.phone_number || '',
   pseudonym: r.pseudonym,
-  age: r.age,
+  age: r.age ? Number(r.age) : (r.dob ? calculateAgeFromDob(r.dob) : 24),
   dob: r.dob,
   gender: r.gender,
   nature: Array.isArray(r.nature)
@@ -87,46 +102,67 @@ export const getDiscoverUsersApi = async (filters = {}) => {
       SELECT * FROM users
       WHERE role != 'admin' AND id != 'current_user' AND is_banned = FALSE
       ORDER BY created_at DESC
-      LIMIT 50;
+      LIMIT 100;
     `;
 
+    let allUsers = [];
     if (rows && rows.length > 0) {
-      let results = rows.map(mapUserRow);
-
-      if (filters.minAge) results = results.filter((u) => u.age >= filters.minAge);
-      if (filters.maxAge) results = results.filter((u) => u.age <= filters.maxAge);
-      if (filters.maxDistance) results = results.filter((u) => u.distance <= filters.maxDistance);
-      if (filters.intent && filters.intent !== 'all') {
-        results = results.filter((u) => u.intent?.toLowerCase() === filters.intent.toLowerCase());
-      }
-      if (filters.relationshipStyle && filters.relationshipStyle !== 'all') {
-        results = results.filter((u) => u.relationshipStyle === filters.relationshipStyle);
-      }
-      if (filters.mode && filters.mode !== 'all') {
-        results = results.filter((u) => u.mode === filters.mode);
-      }
-      if (filters.interest && filters.interest !== 'all') {
-        results = results.filter((u) => u.interests?.includes(filters.interest));
-      }
-      if (filters.search && filters.search.trim()) {
-        const q = filters.search.toLowerCase();
-        results = results.filter(
-          (u) =>
-            u.name.toLowerCase().includes(q) ||
-            u.pseudonym?.toLowerCase().includes(q) ||
-            u.bio?.toLowerCase().includes(q) ||
-            u.location?.toLowerCase().includes(q) ||
-            u.interests?.some((i) => i.toLowerCase().includes(q))
-        );
-      }
-      return results;
+      allUsers = rows.map(mapUserRow);
+    } else {
+      allUsers = MOCK_USERS.filter((u) => u.role !== 'admin' && !u.isBanned);
     }
-    return [];
+
+    let results = [...allUsers];
+
+    if (filters.minAge) results = results.filter((u) => u.age >= filters.minAge);
+    if (filters.maxAge) results = results.filter((u) => u.age <= filters.maxAge);
+    if (filters.maxDistance) results = results.filter((u) => (u.distance || 5) <= filters.maxDistance);
+    if (filters.intent && filters.intent !== 'all') {
+      results = results.filter((u) => u.intent?.toLowerCase() === filters.intent.toLowerCase());
+    }
+    if (filters.relationshipStyle && filters.relationshipStyle !== 'all') {
+      results = results.filter((u) => u.relationshipStyle === filters.relationshipStyle);
+    }
+    if (filters.mode && filters.mode !== 'all') {
+      results = results.filter((u) => u.mode === filters.mode);
+    }
+    if (filters.interest && filters.interest !== 'all') {
+      results = results.filter((u) => u.interests?.includes(filters.interest));
+    }
+
+    if (filters.search && filters.search.trim()) {
+      // 1. First search within the filtered subset
+      let searchOutcome = searchAndRankUsers(results, filters.search);
+
+      // 2. If filtered subset has no exact matches, search across all users to find broader matches
+      if (searchOutcome.results.length === 0 && results.length < allUsers.length) {
+        const broaderOutcome = searchAndRankUsers(allUsers, filters.search);
+        if (broaderOutcome.results.length > 0) {
+          searchOutcome = broaderOutcome;
+        }
+      }
+
+      const finalResults = searchOutcome.results;
+      finalResults.isFuzzyFallback = searchOutcome.isFuzzyFallback;
+      finalResults.suggestions = searchOutcome.suggestions;
+      finalResults.totalMatches = searchOutcome.totalMatches;
+      return finalResults;
+    }
+
+    return results;
   } catch (err) {
     console.warn('Neon Postgres discover notice:', err.message);
+    const mockFiltered = MOCK_USERS.filter((u) => u.role !== 'admin' && !u.isBanned);
+    if (filters.search && filters.search.trim()) {
+      const outcome = searchAndRankUsers(mockFiltered, filters.search);
+      const res = outcome.results;
+      res.isFuzzyFallback = outcome.isFuzzyFallback;
+      res.suggestions = outcome.suggestions;
+      res.totalMatches = outcome.totalMatches;
+      return res;
+    }
+    return mockFiltered;
   }
-
-  return [];
 };
 
 // 3. Get User By ID from Neon Lakebase Postgres
