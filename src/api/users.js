@@ -76,15 +76,20 @@ export const mapUserRow = (r) => ({
 // 1. Get Match Feed Users from Neon Lakebase Postgres
 export const getFeedUsersApi = async () => {
   try {
+    const currentUserId = useAuthStore.getState().user?.id;
     const sql = getNeonSql();
     const rows = await sql`
       SELECT * FROM users
-      WHERE role != 'admin' AND id != 'current_user' AND is_banned = FALSE
+      WHERE role != 'admin' AND is_banned = FALSE
       ORDER BY active_now DESC, created_at DESC
-      LIMIT 25;
+      LIMIT 50;
     `;
     if (rows && rows.length > 0) {
-      return rows.map(mapUserRow);
+      let results = rows.map(mapUserRow);
+      if (currentUserId) {
+        results = results.filter((u) => u.id !== currentUserId);
+      }
+      return results;
     }
     return [];
   } catch (err) {
@@ -97,10 +102,11 @@ export const getFeedUsersApi = async () => {
 // 2. Discover Users with Filter Queries from Neon Lakebase Postgres
 export const getDiscoverUsersApi = async (filters = {}) => {
   try {
+    const currentUserId = useAuthStore.getState().user?.id;
     const sql = getNeonSql();
     const rows = await sql`
       SELECT * FROM users
-      WHERE role != 'admin' AND id != 'current_user' AND is_banned = FALSE
+      WHERE is_banned = FALSE
       ORDER BY created_at DESC
       LIMIT 100;
     `;
@@ -109,10 +115,18 @@ export const getDiscoverUsersApi = async (filters = {}) => {
     if (rows && rows.length > 0) {
       allUsers = rows.map(mapUserRow);
     } else {
-      allUsers = MOCK_USERS.filter((u) => u.role !== 'admin' && !u.isBanned);
+      allUsers = MOCK_USERS.filter((u) => !u.isBanned);
     }
 
     let results = [...allUsers];
+
+    // When NOT searching explicitly, filter out current user and admin accounts
+    if (!filters.search || !filters.search.trim()) {
+      if (currentUserId) {
+        results = results.filter((u) => u.id !== currentUserId);
+      }
+      results = results.filter((u) => u.role !== 'admin');
+    }
 
     if (filters.minAge) results = results.filter((u) => u.age >= filters.minAge);
     if (filters.maxAge) results = results.filter((u) => u.age <= filters.maxAge);
@@ -134,7 +148,7 @@ export const getDiscoverUsersApi = async (filters = {}) => {
       // 1. First search within the filtered subset
       let searchOutcome = searchAndRankUsers(results, filters.search);
 
-      // 2. If filtered subset has no exact matches, search across all users to find broader matches
+      // 2. If filtered subset has no matches, search across all users in the database
       if (searchOutcome.results.length === 0 && results.length < allUsers.length) {
         const broaderOutcome = searchAndRankUsers(allUsers, filters.search);
         if (broaderOutcome.results.length > 0) {
@@ -152,7 +166,7 @@ export const getDiscoverUsersApi = async (filters = {}) => {
     return results;
   } catch (err) {
     console.warn('Neon Postgres discover notice:', err.message);
-    const mockFiltered = MOCK_USERS.filter((u) => u.role !== 'admin' && !u.isBanned);
+    const mockFiltered = MOCK_USERS.filter((u) => !u.isBanned);
     if (filters.search && filters.search.trim()) {
       const outcome = searchAndRankUsers(mockFiltered, filters.search);
       const res = outcome.results;

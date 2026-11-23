@@ -1,11 +1,14 @@
 import { create } from 'zustand';
-import { loginApi } from '../api/auth';
+import { loginApi } from '../api/auth.js';
 
 const AUTH_STORAGE_KEY = 'sparkconnect_auth';
 
 // Load initial state from localStorage only if a valid authenticated user exists
 const loadStoredAuth = () => {
   try {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return { user: null, token: null, isAuthenticated: false };
+    }
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
