@@ -62,13 +62,13 @@ async function runTests() {
 
   // 1. Test Database Client
   console.log('[1/10] Testing Neon Postgres query helper...');
-  const { query } = await import('../api/_lib/db.js');
+  const { query } = await import('../server/_lib/db.js');
   const userCount = await query(`SELECT count(*)::int AS count FROM users`);
   console.log(`✅ Database connected. Total users in DB: ${userCount[0].count}`);
 
   // 2. Test Zod Validation Schemas
   console.log('\n[2/10] Testing Zod Validation Schemas...');
-  const { signupSchema, messageSendSchema } = await import('../api/_lib/validation.js');
+  const { signupSchema, messageSendSchema } = await import('../server/_lib/validation.js');
   
   // Under 18 test
   const underAge = signupSchema.safeParse({
@@ -84,13 +84,13 @@ async function runTests() {
 
   // 3. Test Moderation
   console.log('\n[3/10] Testing Moderation filter...');
-  const { containsProfanity } = await import('../api/_lib/moderation.js');
+  const { containsProfanity } = await import('../server/_lib/moderation.js');
   const hasBadWord = containsProfanity('Send me a wire transfer please');
   console.log(`✅ Profanity filter detected prohibited language: ${hasBadWord}`);
 
   // 4. Test Login Route (Admin)
   console.log('\n[4/10] Testing POST /api/auth/login...');
-  const loginHandler = (await import('../api/auth/login.js')).default;
+  const loginHandler = (await import('../server/auth/login.js')).default;
   const loginReqRes = createMockReqRes({
     method: 'POST',
     body: {
@@ -109,7 +109,7 @@ async function runTests() {
 
   // 5. Test Auth Middleware (requireAuth & requireAdmin)
   console.log('\n[5/10] Testing Auth Middleware with JWT...');
-  const { requireAuth, requireAdmin } = await import('../api/_lib/auth.js');
+  const { requireAuth, requireAdmin } = await import('../server/_lib/auth.js');
   const authReq = { headers: { authorization: `Bearer ${adminToken}` } };
   const verifiedUser = await requireAuth(authReq);
   const verifiedAdmin = await requireAdmin(authReq);
@@ -117,7 +117,7 @@ async function runTests() {
 
   // 6. Test Signup Route
   console.log('\n[6/10] Testing POST /api/auth/signup...');
-  const signupHandler = (await import('../api/auth/signup.js')).default;
+  const signupHandler = (await import('../server/auth/signup.js')).default;
   const testEmail = `test_${Date.now()}@example.com`;
   const signupReqRes = createMockReqRes({
     method: 'POST',
@@ -144,7 +144,7 @@ async function runTests() {
 
   // 7. Test Admin User Verification & Audit Logging
   console.log('\n[7/10] Testing Admin Verification & Audit Logging...');
-  const verifyHandler = (await import('../api/admin/verify.js')).default;
+  const verifyHandler = (await import('../server/admin/verify.js')).default;
   const verifyReqRes = createMockReqRes({
     method: 'POST',
     headers: { authorization: `Bearer ${adminToken}` },
@@ -167,7 +167,7 @@ async function runTests() {
 
   // 8. Test Discovery Feed & Stranger Mode Privacy
   console.log('\n[8/10] Testing GET /api/users (feed & stranger privacy)...');
-  const feedHandler = (await import('../api/users/index.js')).default;
+  const feedHandler = (await import('../server/users/index.js')).default;
   const feedReqRes = createMockReqRes({
     method: 'GET',
     headers: { authorization: `Bearer ${newUserToken}` },
@@ -188,8 +188,8 @@ async function runTests() {
 
   // 9. Test Chats Creation & Messaging
   console.log('\n[9/10] Testing POST /api/chats/start & Message Sending...');
-  const chatStartHandler = (await import('../api/chats/start.js')).default;
-  const chatDetailHandler = (await import('../api/chats/[id].js')).default;
+  const chatStartHandler = (await import('../server/chats/start.js')).default;
+  const chatDetailHandler = (await import('../server/chats/[id].js')).default;
 
   // Find another user to chat with (Maya Lin)
   const targetCandidate = await query(`SELECT id FROM users WHERE email = 'maya.lin@example.com'`);
@@ -220,7 +220,7 @@ async function runTests() {
 
     // 10. Test Admin Chat Log (Strict Legal Audit Protection)
     console.log('\n[10/10] Testing GET /api/admin/chat-log/:id (Audit-Logged Access)...');
-    const adminChatLogHandler = (await import('../api/admin/chat-log.js')).default;
+    const adminChatLogHandler = (await import('../server/admin/chat-log.js')).default;
     const auditChatReqRes = createMockReqRes({
       method: 'GET',
       headers: { authorization: `Bearer ${adminToken}` },
