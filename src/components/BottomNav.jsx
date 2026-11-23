@@ -1,19 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Flame, Compass, MapPin, MessageCircle, User, Shield } from 'lucide-react';
-import { useAuthStore } from '../store/authStore';
+import { Flame, Compass, MapPin, MessageCircle, User } from 'lucide-react';
 
 export const BottomNav = () => {
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
-
   const navItems = [
     { to: '/app', label: 'Feed', icon: Flame, end: true },
     { to: '/app/discover', label: 'Discover', icon: Compass },
     { to: '/app/map', label: 'Map', icon: MapPin },
     { to: '/app/chats', label: 'Chats', icon: MessageCircle },
     { to: '/app/profile/me', label: 'Profile', icon: User },
-    ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : [])
   ];
 
   return (

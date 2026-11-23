@@ -7,7 +7,6 @@ import {
   MessageCircle,
   User,
   Settings,
-  Shield,
   Sun,
   Moon,
   LogOut,
@@ -24,8 +23,6 @@ export const Sidebar = () => {
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useUIStore();
   const { mode, setMode } = useProfileStore();
-
-  const isAdmin = user?.role === 'admin';
 
   const navLinks = [
     { to: '/app', label: 'Match Feed', icon: Flame, end: true },
@@ -107,31 +104,6 @@ export const Sidebar = () => {
           );
         })}
 
-        {/* Admin Link Section */}
-        <div className="pt-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 px-3 pb-1 flex items-center justify-between">
-            <span>Administration</span>
-            {isAdmin && (
-              <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded">
-                Admin
-              </span>
-            )}
-          </div>
-          <NavLink
-            to="/admin"
-            className={({ isActive }) => `
-              flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200 select-none min-h-touch
-              ${
-                isActive
-                  ? 'bg-purple-900/40 text-purple-300 border border-purple-500/40'
-                  : 'text-gray-400 hover:text-purple-300 hover:bg-gray-900'
-              }
-            `}
-          >
-            <Shield className="w-5 h-5 text-purple-400" />
-            <span>Admin Control Panel</span>
-          </NavLink>
-        </div>
       </nav>
 
       {/* User Footer Profile & Quick Role Switcher */}

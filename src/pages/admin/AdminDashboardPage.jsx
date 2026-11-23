@@ -22,7 +22,6 @@ import {
 import { getStatsApi } from '../../api/admin';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
-import NeonCloudStatus from '../../components/NeonCloudStatus';
 
 export const AdminDashboardPage = () => {
   const [stats, setStats] = useState(null);
@@ -202,9 +201,6 @@ export const AdminDashboardPage = () => {
           </ResponsiveContainer>
         </div>
       </Card>
-
-      {/* Neon Cloud Services Health Monitor */}
-      <NeonCloudStatus />
 
       {/* Quick Moderation Short-cuts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
