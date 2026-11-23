@@ -52,6 +52,7 @@ import { generateAiIcebreaker } from '../api/neon';
 import { useAuthStore } from '../store/authStore';
 import { useProfileStore } from '../store/profileStore';
 import { useNotificationStore } from '../store/notificationStore';
+import { compressImageForUpload } from '../utils/imageCompressor';
 import {
   playMessageSound,
   playFriendRequestSound,
@@ -78,8 +79,10 @@ export const ChatsPage = () => {
 
   // Attachment & View-Limited Media State
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
-  const [mediaLimitOption, setMediaLimitOption] = useState('1'); // 'regular' | '1' | '2' | '3'
-  const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState(null); // { url, name, viewLimit }
+  const [mediaLimitOption, setMediaLimitOption] = useState('regular'); // 'regular' | '1' | '2' | '3'
+  const [selectedGalleryPhoto, setSelectedGalleryPhoto] = useState(null); // { url, name, viewLimit, caption }
+  const [isCompressingPhoto, setIsCompressingPhoto] = useState(false);
+  const [lightboxMediaUrl, setLightboxMediaUrl] = useState(null);
   const fileInputRef = useRef(null);
 
   // Modals state
@@ -364,25 +367,30 @@ export const ChatsPage = () => {
     }
   };
 
-  // Handle file selection from local device / gallery
-  const handleGalleryFileSelect = (e) => {
+  // Handle file selection from local device / gallery with instant downscale compression
+  const handleGalleryFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      setIsCompressingPhoto(true);
+      const compressedUrl = await compressImageForUpload(file, 1280, 0.82);
       setSelectedGalleryPhoto({
-        url: reader.result,
+        url: compressedUrl,
         name: file.name,
-        viewLimit: '1', // default 1x view once
+        viewLimit: 'regular', // Default to regular photo so it is permanently visible in chat!
+        caption: '',
       });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    } catch (err) {
+      console.error('Error reading gallery photo:', err);
+    } finally {
+      setIsCompressingPhoto(false);
+      e.target.value = '';
+    }
   };
 
   // Send Media / View-Once Media (supports local gallery customUrl or fallback sample)
-  const handleSendMediaFile = async (limitMode, customUrl = null) => {
+  const handleSendMediaFile = async (limitMode = 'regular', customUrl = null, customCaption = null) => {
     setShowAttachmentMenu(false);
     setSelectedGalleryPhoto(null);
     if (!activeChat) return;
@@ -399,6 +407,8 @@ export const ChatsPage = () => {
     const limitNum = isViewOnce ? parseInt(limitMode, 10) : undefined;
     const disappearing = activeChat.disappearingSetting !== 'off' ? activeChat.disappearingSetting : undefined;
 
+    const messageText = customCaption || (isViewOnce ? `🔒 Protected Photo (${limitNum}x View)` : 'Sent a photo');
+
     const optimisticMedia = {
       id: 'temp_media_' + Date.now(),
       senderId: currentUser?.id || 'current_user',
@@ -406,7 +416,7 @@ export const ChatsPage = () => {
       viewLimit: limitNum,
       viewsRemaining: limitNum,
       mediaUrl: pickedUrl,
-      text: isViewOnce ? `🔒 Protected Photo (${limitNum}x View)` : 'Sent a photo',
+      text: messageText,
       disappearing,
       timestamp: new Date().toISOString(),
       status: 'sending',
@@ -423,7 +433,7 @@ export const ChatsPage = () => {
         viewLimit: limitNum,
         viewsRemaining: limitNum,
         mediaUrl: pickedUrl,
-        text: isViewOnce ? `🔒 Protected Photo (${limitNum}x View)` : 'Sent a photo',
+        text: messageText,
         disappearing,
       });
 
@@ -1011,6 +1021,7 @@ export const ChatsPage = () => {
                     isMine={msg.senderId === currentUser?.id || msg.senderId === 'current_user'}
                     partnerAvatar={activeChat.partner?.avatar}
                     onOpenEphemeralMedia={(mediaMsg) => setViewingMediaMessage(mediaMsg)}
+                    onOpenMedia={(url) => setLightboxMediaUrl(url)}
                   />
                 );
               })}
@@ -1028,10 +1039,11 @@ export const ChatsPage = () => {
 
             {/* GALLERY PHOTO STAGED FOR INSTANT SEND */}
             {selectedGalleryPhoto && (
-              <div className="p-3 bg-gray-950 border-t border-pink-500/40 animate-slide-up">
+              <div className="p-3.5 bg-gray-950/95 border-t border-pink-500/50 backdrop-blur-xl animate-slide-up shadow-2xl">
                 <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-800">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-pink-400">Selected from Gallery</span>
+                    <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+                    <span className="text-xs font-bold text-white">Send Photo from Gallery</span>
                     <span className="text-[10px] text-gray-400 truncate max-w-[150px]">
                       {selectedGalleryPhoto.name}
                     </span>
@@ -1039,7 +1051,8 @@ export const ChatsPage = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedGalleryPhoto(null)}
-                    className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800"
+                    className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 cursor-pointer"
+                    title="Cancel"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1047,21 +1060,38 @@ export const ChatsPage = () => {
 
                 <div className="flex flex-col sm:flex-row items-center gap-3">
                   {/* Photo Preview Thumbnail */}
-                  <img
-                    src={selectedGalleryPhoto.url}
-                    alt="Selected gallery preview"
-                    className="w-16 h-16 rounded-xl object-cover ring-2 ring-pink-500/50 shadow-md shrink-0"
-                  />
+                  <div
+                    className="relative shrink-0 group cursor-pointer"
+                    onClick={() => setLightboxMediaUrl(selectedGalleryPhoto.url)}
+                  >
+                    <img
+                      src={selectedGalleryPhoto.url}
+                      alt="Selected gallery preview"
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover ring-2 ring-pink-500/60 shadow-lg"
+                    />
+                    <div className="absolute inset-0 rounded-2xl bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[10px] font-bold text-white">
+                      Preview
+                    </div>
+                  </div>
 
-                  {/* View Limit Selector */}
-                  <div className="flex-1 w-full space-y-1.5">
-                    <p className="text-[11px] text-gray-300 font-medium">Protection View Limit:</p>
-                    <div className="grid grid-cols-4 gap-1.5 text-xs">
+                  {/* Caption & Protection Mode */}
+                  <div className="flex-1 w-full space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Add a message / caption with photo... (optional)"
+                      value={selectedGalleryPhoto.caption || ''}
+                      onChange={(e) =>
+                        setSelectedGalleryPhoto((prev) => ({ ...prev, caption: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-900 border border-gray-800 text-xs text-white placeholder:text-gray-500 focus:outline-none focus:border-pink-500 transition-all"
+                    />
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-bold text-gray-400 mr-1">Mode:</span>
                       {[
-                        { id: '1', label: '1x View' },
-                        { id: '2', label: '2x View' },
-                        { id: '3', label: '3x View' },
-                        { id: 'regular', label: 'Regular' },
+                        { id: 'regular', label: '📸 Regular Photo (Permanent)' },
+                        { id: '1', label: '🔒 1x View Once' },
+                        { id: '2', label: '🔒 2x View Twice' },
                       ].map((opt) => (
                         <button
                           key={opt.id}
@@ -1069,9 +1099,9 @@ export const ChatsPage = () => {
                           onClick={() =>
                             setSelectedGalleryPhoto((prev) => ({ ...prev, viewLimit: opt.id }))
                           }
-                          className={`py-1 px-1.5 text-center rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`py-1 px-2.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                             selectedGalleryPhoto.viewLimit === opt.id
-                              ? 'bg-pink-600 text-white shadow-sm ring-1 ring-pink-400'
+                              ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/20 ring-1 ring-pink-400'
                               : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800'
                           }`}
                         >
@@ -1084,13 +1114,23 @@ export const ChatsPage = () => {
                   {/* Instant Send Gallery Button */}
                   <button
                     type="button"
-                    onClick={() =>
-                      handleSendMediaFile(selectedGalleryPhoto.viewLimit, selectedGalleryPhoto.url)
-                    }
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-pink-500/30 flex items-center justify-center gap-2 shrink-0 cursor-pointer active:scale-95 transition-all"
+                    onClick={() => {
+                      const isViewOnce =
+                        selectedGalleryPhoto.viewLimit === '1' ||
+                        selectedGalleryPhoto.viewLimit === '2';
+                      const caption =
+                        selectedGalleryPhoto.caption?.trim() ||
+                        (isViewOnce ? undefined : 'Sent a photo');
+                      handleSendMediaFile(
+                        selectedGalleryPhoto.viewLimit,
+                        selectedGalleryPhoto.url,
+                        caption
+                      );
+                    }}
+                    className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-pink-500/30 flex items-center justify-center gap-2 shrink-0 cursor-pointer active:scale-95 transition-all"
                   >
                     <Send className="w-4 h-4" />
-                    <span>Instant Send Photo</span>
+                    <span>Send Photo</span>
                   </button>
                 </div>
               </div>
@@ -1248,71 +1288,93 @@ export const ChatsPage = () => {
                 </div>
               ) : (
                 /* STANDARD INPUT BAR */
-                <form onSubmit={handleSendMessage} className="flex items-center gap-1.5 sm:gap-2">
-                  {/* HIDE IMAGE, VOICE, AND ICEBREAKER BUTTONS WHILE TYPING MESSAGE */}
-                  {!inputText.trim() && (
-                    <>
-                      {/* Media / Gallery Attachment Trigger */}
-                      <button
-                        type="button"
-                        onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                        className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-pink-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
-                        title="Send media from gallery or 1x View Once"
-                      >
-                        <Image className="w-4 h-4" />
-                      </button>
-
-                      {/* Voice Clip Trigger */}
-                      <button
-                        type="button"
-                        onClick={() => setIsRecordingVoice(true)}
-                        className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
-                        title="Record voice note"
-                      >
-                        <Mic className="w-4 h-4" />
-                      </button>
-
-                      {/* Conversation Starter Generator (natural human social phrasing) */}
-                      <button
-                        type="button"
-                        onClick={handleGenerateIcebreaker}
-                        disabled={isGeneratingIcebreaker}
-                        className="p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-pink-500/10 hover:from-amber-500/20 hover:to-pink-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 transition-all min-h-touch min-w-touch flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
-                        title="Conversation Starter - Suggest a fun opener"
-                      >
-                        <Sparkles
-                          className={`w-4 h-4 ${
-                            isGeneratingIcebreaker ? 'animate-spin text-pink-400' : 'text-amber-400'
-                          }`}
-                        />
-                        <span className="hidden xl:inline text-[11px] font-bold">Spark</span>
-                      </button>
-                    </>
+                <form onSubmit={handleSendMessage} className="space-y-2">
+                  {/* Image Processing Loader */}
+                  {isCompressingPhoto && (
+                    <div className="px-3 py-1.5 rounded-xl bg-pink-950/60 border border-pink-500/40 text-xs text-pink-300 flex items-center gap-2 animate-pulse">
+                      <Clock className="w-3.5 h-3.5 animate-spin text-pink-400" />
+                      <span>Optimizing photo from gallery...</span>
+                    </div>
                   )}
 
-                  {/* Text Input - Expands to full width when buttons are hidden */}
-                  <input
-                    type="text"
-                    placeholder={`Message ${partnerDisplayName}...`}
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500 transition-all"
-                  />
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    {/* HIDE IMAGE, VOICE, AND ICEBREAKER BUTTONS WHILE TYPING MESSAGE */}
+                    {!inputText.trim() && (
+                      <>
+                        {/* 1-Click Instant Device Gallery Photo Picker */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-pink-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
+                          title="Choose photo from device gallery"
+                        >
+                          <Image className="w-4 h-4" />
+                        </button>
+
+                        {/* View-Once & Ephemeral Attachment Options */}
+                        <button
+                          type="button"
+                          onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
+                          className={`p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer ${
+                            showAttachmentMenu ? 'text-pink-400 border-pink-500/50 bg-gray-800' : ''
+                          }`}
+                          title="View-Once & Anti-Screenshot options"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </button>
+
+                        {/* Voice Clip Trigger */}
+                        <button
+                          type="button"
+                          onClick={() => setIsRecordingVoice(true)}
+                          className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
+                          title="Record voice note"
+                        >
+                          <Mic className="w-4 h-4" />
+                        </button>
+
+                        {/* Conversation Starter Generator (natural human social phrasing) */}
+                        <button
+                          type="button"
+                          onClick={handleGenerateIcebreaker}
+                          disabled={isGeneratingIcebreaker}
+                          className="p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-pink-500/10 hover:from-amber-500/20 hover:to-pink-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 transition-all min-h-touch min-w-touch flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                          title="Conversation Starter - Suggest a fun opener"
+                        >
+                          <Sparkles
+                            className={`w-4 h-4 ${
+                              isGeneratingIcebreaker ? 'animate-spin text-pink-400' : 'text-amber-400'
+                            }`}
+                          />
+                          <span className="hidden xl:inline text-[11px] font-bold">Spark</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Text Input - Expands to full width when buttons are hidden */}
+                    <input
+                      type="text"
+                      placeholder={`Message ${partnerDisplayName}...`}
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500 transition-all"
+                    />
 
                   {/* INSTANT SEND BUTTON - Prominent & Visible on Mobile & Desktop */}
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim() || isSending}
-                    className={`min-h-[44px] min-w-[44px] px-3.5 sm:px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-md cursor-pointer ${
-                      inputText.trim()
-                        ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white shadow-pink-500/30 active:scale-95'
-                        : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700/50'
-                    }`}
-                    title="Instant send message"
-                  >
-                    <Send className="w-4 h-4 shrink-0" />
-                    <span className="text-xs sm:text-sm">Send</span>
-                  </button>
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim() || isSending}
+                      className={`min-h-[44px] min-w-[44px] px-3.5 sm:px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-md cursor-pointer ${
+                        inputText.trim()
+                          ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white shadow-pink-500/30 active:scale-95'
+                          : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700/50'
+                      }`}
+                      title="Instant send message"
+                    >
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span className="text-xs sm:text-sm">Send</span>
+                    </button>
+                  </div>
                 </form>
               )}
             </div>
@@ -1480,6 +1542,29 @@ export const ChatsPage = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Full-Screen Photo Lightbox Viewer */}
+      {lightboxMediaUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLightboxMediaUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxMediaUrl(null)}
+            className="absolute top-4 right-4 p-2.5 rounded-full bg-gray-900/80 hover:bg-gray-800 text-white border border-white/20 transition-all cursor-pointer z-10"
+            title="Close Full Screen"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxMediaUrl}
+            alt="Full-size photo view"
+            className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
 

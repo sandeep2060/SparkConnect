@@ -20,6 +20,7 @@ export const ChatBubble = ({
   showAvatar = true,
   partnerAvatar,
   onOpenEphemeralMedia,
+  onOpenMedia,
 }) => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
@@ -181,16 +182,24 @@ export const ChatBubble = ({
 
         {/* 2. REGULAR MEDIA ATTACHMENT */}
         {isRegularMedia && (
-          <div className="space-y-2">
-            <div className="rounded-xl overflow-hidden border border-white/10 max-h-60 bg-black">
+          <div className="space-y-1.5">
+            <div
+              onClick={() => onOpenMedia && message.mediaUrl && onOpenMedia(message.mediaUrl)}
+              className="rounded-xl overflow-hidden border border-white/10 max-h-80 bg-black/60 cursor-pointer group relative"
+            >
               <img
                 src={message.mediaUrl}
                 alt="Attachment"
-                className="w-full h-full object-cover hover:scale-105 transition-transform"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               />
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-[11px] font-bold text-white bg-black/60 px-2 py-1 rounded-lg backdrop-blur-sm">
+                  Click to Expand
+                </span>
+              </div>
             </div>
-            {message.text && (
-              <p className="leading-relaxed whitespace-pre-wrap text-xs">{message.text}</p>
+            {message.text && message.text !== 'Sent a photo' && (
+              <p className="leading-relaxed whitespace-pre-wrap text-xs px-0.5">{message.text}</p>
             )}
           </div>
         )}

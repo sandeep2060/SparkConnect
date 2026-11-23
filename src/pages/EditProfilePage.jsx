@@ -13,6 +13,7 @@ import Modal from '../components/Modal';
 import IntentChips from '../components/IntentChips';
 import InterestGrid from '../components/InterestGrid';
 import NatureChips from '../components/NatureChips';
+import { compressImageForUpload } from '../utils/imageCompressor';
 
 export const EditProfilePage = () => {
   const navigate = useNavigate();
@@ -184,10 +185,15 @@ export const EditProfilePage = () => {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    setFormData({ ...formData, avatar: URL.createObjectURL(file) });
+                    try {
+                      const compressed = await compressImageForUpload(file, 600, 0.85);
+                      setFormData((prev) => ({ ...prev, avatar: compressed }));
+                    } catch {
+                      setFormData((prev) => ({ ...prev, avatar: URL.createObjectURL(file) }));
+                    }
                   }
                 }}
               />
