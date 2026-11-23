@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Sparkles, Shield, User, ArrowRight, Phone } from 'lucide-react';
+import { Mail, Lock, Sparkles, ArrowRight, Phone } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import Card from '../components/Card';
@@ -11,8 +11,8 @@ export const LoginPage = () => {
   const location = useLocation();
   const { login } = useAuthStore();
 
-  const [email, setEmail] = useState('admin@sparkconnect.dev');
-  const [password, setPassword] = useState('Admin123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,16 +34,6 @@ export const LoginPage = () => {
       setError(err.message || 'Invalid login credentials. Please try again.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleQuickDemo = (type) => {
-    if (type === 'admin') {
-      setEmail('admin@sparkconnect.dev');
-      setPassword('Admin123!');
-    } else {
-      setEmail('alex.rivera@sparkconnect.com');
-      setPassword('Demo123!');
     }
   };
 
@@ -116,31 +106,6 @@ export const LoginPage = () => {
               Sign In
             </Button>
           </form>
-
-          {/* Quick Demo Pre-fills */}
-          <div className="pt-4 border-t border-gray-800 space-y-2">
-            <div className="text-center text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Instant Demo Access
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('user')}
-                className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-800 text-xs font-semibold text-gray-200 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <User className="w-3.5 h-3.5 text-pink-400" />
-                <span>Demo User</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin')}
-                className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 border border-gray-800 text-xs font-semibold text-purple-300 flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Shield className="w-3.5 h-3.5 text-purple-400" />
-                <span>Demo Admin</span>
-              </button>
-            </div>
-          </div>
         </Card>
 
         {/* Footer Link */}

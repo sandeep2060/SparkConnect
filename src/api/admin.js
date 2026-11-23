@@ -3,8 +3,8 @@ import { MOCK_ADMIN_STATS, MOCK_USERS, MOCK_REPORTS } from '../utils/mockData';
 import { getNeonSql } from './neon';
 import { mapUserRow } from './users';
 
-let adminUsersMemory = [...MOCK_USERS];
-let adminReportsMemory = [...MOCK_REPORTS];
+let adminUsersMemory = [];
+let adminReportsMemory = [];
 
 // 1. Get Live Admin Dashboard Stats from Neon Lakebase Postgres
 export const getStatsApi = async () => {

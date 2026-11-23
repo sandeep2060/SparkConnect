@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { sleep, calculateAge } from '../utils/helpers.js';
-import { CURRENT_MOCK_USER, ADMIN_MOCK_USER, MOCK_USERS } from '../utils/mockData.js';
+import { MOCK_USERS } from '../utils/mockData.js';
 import { getNeonSql } from './neon.js';
 import { mapUserRow } from './users.js';
 
@@ -42,21 +42,19 @@ export const checkUsernameUniqueApi = async (rawUsername) => {
   }
 
   await sleep(150);
-  const registeredUsernames = [
-    ...MOCK_USERS.map((u) => u.username?.toLowerCase()).filter(Boolean),
-    CURRENT_MOCK_USER.username?.toLowerCase(),
-    ADMIN_MOCK_USER.username?.toLowerCase(),
+  const reservedUsernames = [
     'admin',
     'root',
     'sparkconnect',
     'moderator',
     'support',
+    'official',
   ];
 
-  const isTaken = registeredUsernames.includes(clean);
+  const isTaken = reservedUsernames.includes(clean);
   return {
     available: !isTaken,
-    message: isTaken ? `@${clean} is already claimed by another spark` : `@${clean} is available!`,
+    message: isTaken ? `@${clean} is a reserved system name` : `@${clean} is available!`,
   };
 };
 
@@ -101,21 +99,10 @@ export const loginApi = async ({ email, password, loginIdentifier }) => {
         throw new Error('Your account has been suspended for safety policy violations.');
       }
 
-      // Check password using bcrypt
+      // Check password strictly using bcrypt
       let isPasswordValid = false;
       if (userRow.password_hash) {
         isPasswordValid = await bcrypt.compare(password, userRow.password_hash);
-        // Fallback for seeded bcrypt hash
-        if (
-          !isPasswordValid &&
-          userRow.password_hash.includes('N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy')
-        ) {
-          isPasswordValid =
-            password === 'Admin123!' ||
-            password === 'Demo123!' ||
-            password === 'spark-secret-123' ||
-            password === 'password';
-        }
       }
 
       if (!isPasswordValid) {
@@ -144,24 +131,7 @@ export const loginApi = async ({ email, password, loginIdentifier }) => {
     console.warn('Neon login notice:', err.message);
   }
 
-  // Fallback demo logins if database row is not yet seeded
-  if (cleanEmail === 'admin@sparkconnect.com' || cleanEmail === 'admin@sparkconnect.dev') {
-    if (password === 'admin-master-key' || password === 'Admin123!' || password === 'spark-secret-123') {
-      return {
-        user: ADMIN_MOCK_USER,
-        token: 'jwt-admin-secret-token-' + Date.now(),
-      };
-    }
-  }
-
-  if (cleanEmail === 'alex.rivera@sparkconnect.com' || identifier === '+15551234567') {
-    return {
-      user: CURRENT_MOCK_USER,
-      token: 'jwt-user-secret-token-' + Date.now(),
-    };
-  }
-
-  throw new Error('No account found with this email or phone number. Please sign up or check your credentials.');
+  throw new Error('No account found with this email or phone number. Please sign up first.');
 };
 
 // 3. Signup New Member into Neon Lakebase Postgres (saves Name, Username, Phone, Email)

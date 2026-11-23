@@ -3,7 +3,7 @@ import { MOCK_CHATS, MOCK_USERS } from '../utils/mockData';
 import { getNeonSql } from './neon';
 import { mapUserRow } from './users';
 
-let chatsMemoryFallback = [...MOCK_CHATS];
+let chatsMemoryFallback = [];
 
 /**
  * Snapchat-style Streak Calculator

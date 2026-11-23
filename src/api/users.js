@@ -1,6 +1,7 @@
 import { sleep } from '../utils/helpers.js';
-import { MOCK_USERS, CURRENT_MOCK_USER } from '../utils/mockData.js';
+import { MOCK_USERS } from '../utils/mockData.js';
 import { getNeonSql } from './neon.js';
+import { useAuthStore } from '../store/authStore.js';
 
 // Helper to map Postgres row to user object
 export const mapUserRow = (r) => ({
@@ -130,8 +131,10 @@ export const getDiscoverUsersApi = async (filters = {}) => {
 
 // 3. Get User By ID from Neon Lakebase Postgres
 export const getUserByIdApi = async (id) => {
-  if (id === 'me' || id === 'current_user') {
-    return CURRENT_MOCK_USER;
+  const currentAuthUser = useAuthStore.getState().user;
+  if (id === 'me' || id === 'current_user' || (currentAuthUser && id === currentAuthUser.id)) {
+    if (currentAuthUser) return currentAuthUser;
+    throw new Error('Not authenticated');
   }
 
   try {
@@ -145,15 +148,10 @@ export const getUserByIdApi = async (id) => {
       return mapUserRow(rows[0]);
     }
   } catch (err) {
-    console.warn('Neon Postgres getUserById notice (using fallback):', err.message);
+    console.warn('Neon Postgres getUserById notice:', err.message);
   }
 
-  await sleep(250);
-  const found = MOCK_USERS.find((u) => u.id === id);
-  if (!found) {
-    throw new Error('User not found');
-  }
-  return found;
+  throw new Error('Member not found');
 };
 
 // 4. Request Reveal from Neon Lakebase Postgres
@@ -236,8 +234,9 @@ export const updateUserProfileApi = async (updates) => {
   }
 
   await sleep(300);
+  const currentAuthUser = useAuthStore.getState().user;
   return {
-    ...CURRENT_MOCK_USER,
+    ...(currentAuthUser || {}),
     ...updates,
   };
 };

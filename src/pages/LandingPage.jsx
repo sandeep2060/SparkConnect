@@ -55,7 +55,7 @@ export const LandingPage = () => {
             </Link>
             <Link to="/login" className="w-full sm:w-auto">
               <Button size="lg" variant="outline" fullWidth>
-                Explore Demo App
+                Sign In
               </Button>
             </Link>
           </div>

@@ -3,15 +3,8 @@ import { getNeonSql } from './neon';
 import { mapUserRow } from './users';
 
 // In-memory fallback state in case of offline/network interrupt
-let memoryFriendships = [
-  { senderId: 'current_user', receiverId: 'user_1', status: 'accepted' },
-  { senderId: 'user_3', receiverId: 'current_user', status: 'pending' },
-  { senderId: 'current_user', receiverId: 'user_5', status: 'pending' },
-];
-
-let memoryBlocks = [
-  { blockerId: 'current_user', blockedId: 'user_4', reason: 'Inappropriate content' },
-];
+let memoryFriendships = [];
+let memoryBlocks = [];
 
 // 1. Get Relationship Status with a specific user
 export const getRelationshipStatusApi = async (targetUserId) => {

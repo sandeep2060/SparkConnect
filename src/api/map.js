@@ -1,4 +1,3 @@
-import { MOCK_USERS, MOCK_HOTSPOTS, getUserMapData } from '../utils/mockData';
 import { getNeonSql } from './neon';
 import { mapUserRow } from './users';
 

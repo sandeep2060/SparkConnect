@@ -7,66 +7,8 @@ import {
 } from '../utils/sound';
 import { acceptFriendRequestApi, rejectFriendRequestApi } from '../api/social';
 
-const INITIAL_NOTIFICATIONS = [
-  {
-    id: 'notif-1',
-    type: 'friend_request',
-    senderId: 'user-elena',
-    senderName: 'Elena Rostova',
-    username: 'elena_r',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    title: 'Friend Request',
-    message: 'sent you a friend request.',
-    timeAgo: '5m ago',
-    timestamp: new Date(Date.now() - 5 * 60 * 1000),
-    read: false,
-    status: 'pending', // 'pending' | 'accepted' | 'declined'
-    actionUrl: '/app/messages',
-  },
-  {
-    id: 'notif-2',
-    type: 'message',
-    senderId: 'user-marcus',
-    senderName: 'Marcus Vance',
-    username: 'marcus_v',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-    title: 'New Snap Message',
-    message: 'sent you a disappearing photo snap 📸',
-    timeAgo: '32m ago',
-    timestamp: new Date(Date.now() - 32 * 60 * 1000),
-    read: false,
-    actionUrl: '/app/messages',
-  },
-  {
-    id: 'notif-3',
-    type: 'friend_accept',
-    senderId: 'user-maya',
-    senderName: 'Maya Carter',
-    username: 'maya_c',
-    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150',
-    title: 'Request Accepted',
-    message: 'accepted your friend request. You can now chat and maintain streaks!',
-    timeAgo: '2h ago',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    read: true,
-    actionUrl: '/app/messages',
-  },
-  {
-    id: 'notif-4',
-    type: 'system',
-    senderName: 'SparkConnect Team',
-    avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150',
-    title: 'Profile Verified',
-    message: 'Your 18+ ID and live photo verification is officially verified with a blue badge! ⭐',
-    timeAgo: '1d ago',
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    read: true,
-    actionUrl: '/app/profile/me',
-  },
-];
-
 export const useNotificationStore = create((set, get) => ({
-  notifications: INITIAL_NOTIFICATIONS,
+  notifications: [],
   isDropdownOpen: false,
 
   toggleDropdown: () => set((state) => ({ isDropdownOpen: !state.isDropdownOpen })),

@@ -12,7 +12,6 @@ import {
   Moon,
   LogOut,
   Sparkles,
-  RefreshCw,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useUIStore } from '../store/uiStore';
@@ -22,7 +21,7 @@ import ModeToggle from './ModeToggle';
 
 export const Sidebar = () => {
   const navigate = useNavigate();
-  const { user, logout, toggleRole } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useUIStore();
   const { mode, setMode } = useProfileStore();
 
@@ -32,7 +31,7 @@ export const Sidebar = () => {
     { to: '/app', label: 'Match Feed', icon: Flame, end: true },
     { to: '/app/discover', label: 'Discover Grid', icon: Compass },
     { to: '/app/map', label: 'Spark Map (Live)', icon: MapPin },
-    { to: '/app/chats', label: 'Conversations', icon: MessageCircle, badge: 3 },
+    { to: '/app/chats', label: 'Conversations', icon: MessageCircle },
     { to: '/app/profile/me', label: 'My Profile', icon: User },
     { to: '/app/settings', label: 'Settings', icon: Settings },
   ];
@@ -159,20 +158,11 @@ export const Sidebar = () => {
           <button
             onClick={handleLogout}
             title="Log out"
-            className="p-1.5 text-gray-400 hover:text-rose-400 hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-1.5 text-gray-400 hover:text-rose-400 hover:bg-gray-800 rounded-lg transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
           </button>
         </div>
-
-        {/* Demo Helper: One-click User/Admin Toggle */}
-        <button
-          onClick={toggleRole}
-          className="w-full py-1.5 px-2 rounded-lg bg-gray-900 hover:bg-gray-800 border border-gray-800 text-[10px] text-gray-400 hover:text-white flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <RefreshCw className="w-3 h-3" />
-          <span>Switch Demo Role: <strong>{user?.role === 'admin' ? 'Switch to User' : 'Switch to Admin'}</strong></span>
-        </button>
       </div>
     </aside>
   );

@@ -11,7 +11,7 @@ export const BottomNav = () => {
     { to: '/app', label: 'Feed', icon: Flame, end: true },
     { to: '/app/discover', label: 'Discover', icon: Compass },
     { to: '/app/map', label: 'Map', icon: MapPin },
-    { to: '/app/chats', label: 'Chats', icon: MessageCircle, badge: 3 },
+    { to: '/app/chats', label: 'Chats', icon: MessageCircle },
     { to: '/app/profile/me', label: 'Profile', icon: User },
     ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : [])
   ];

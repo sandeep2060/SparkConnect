@@ -1,27 +1,37 @@
 import { create } from 'zustand';
-import { CURRENT_MOCK_USER, ADMIN_MOCK_USER } from '../utils/mockData';
 import { loginApi } from '../api/auth';
 
 const AUTH_STORAGE_KEY = 'sparkconnect_auth';
 
-// Load initial state from localStorage if available
+// Load initial state from localStorage only if a valid authenticated user exists
 const loadStoredAuth = () => {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.isAuthenticated === 'boolean') {
+      // Ensure it is a legitimate authenticated user, not a legacy mock account
+      if (
+        parsed &&
+        parsed.isAuthenticated === true &&
+        parsed.user &&
+        parsed.user.id !== 'user_current' &&
+        parsed.token &&
+        !parsed.token.includes('mock-jwt-token')
+      ) {
         return parsed;
       }
+      // If legacy mock auth was stored, purge it
+      localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (err) {
     console.error('Failed to parse stored auth:', err);
   }
-  // Default to pre-logged in mock user for initial preview, but allow full logout/login
+
+  // Secure default: Unauthenticated. User MUST sign up or log in.
   return {
-    user: CURRENT_MOCK_USER,
-    token: 'mock-jwt-token-alex-rivera-123',
-    isAuthenticated: true,
+    user: null,
+    token: null,
+    isAuthenticated: false,
   };
 };
 
@@ -100,12 +110,4 @@ export const useAuthStore = create((set, get) => ({
     }
     set({ user: updatedUser });
   },
-
-  // Toggle user role between user and admin for quick review demo
-  toggleRole: () => {
-    const currentUser = get().user;
-    if (!currentUser) return;
-    const newRole = currentUser.role === 'admin' ? 'user' : 'admin';
-    get().updateProfile({ role: newRole });
-  }
 }));
