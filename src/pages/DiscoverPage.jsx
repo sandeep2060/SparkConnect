@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, X, Filter, MapPin, Sparkles } from 'lucide-react';
-import { getDiscoverUsersApi, requestRevealApi } from '../api/users';
+import { Search, SlidersHorizontal, X, Filter, MapPin, Sparkles, Flame } from 'lucide-react';
+import { getDiscoverUsersApi, requestRevealApi, likeUserApi } from '../api/users';
 import ProfileCard from '../components/ProfileCard';
 import SkeletonCard from '../components/SkeletonCard';
 import EmptyState from '../components/EmptyState';
 import Button from '../components/Button';
+import CompatibilityModal from '../components/CompatibilityModal';
+import SuperSparkModal from '../components/SuperSparkModal';
 import { INTENTS, RELATIONSHIP_STYLES, ALL_INTERESTS } from '../utils/mockData';
 import { useProfileStore } from '../store/profileStore';
+import { useAuthStore } from '../store/authStore';
+import { rankUsersByCompatibility } from '../utils/compatibilityAlgorithm';
 
 export const DiscoverPage = () => {
   const navigate = useNavigate();
   const { revealUser, isUserRevealed } = useProfileStore();
+  const currentUser = useAuthStore((s) => s.user);
 
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
+  const [sortByAffinity, setSortByAffinity] = useState(true);
+
+  // Modals
+  const [inspectingCompatibility, setInspectingCompatibility] = useState(null);
+  const [superSparkTarget, setSuperSparkTarget] = useState(null);
 
   // Filters State
   const [search, setSearch] = useState('');
@@ -48,7 +58,12 @@ export const DiscoverPage = () => {
         mode: selectedMode,
         interest: selectedInterest,
       });
-      setUsers(results);
+
+      let processed = results;
+      if (sortByAffinity && (!customQuery || !customQuery.trim())) {
+        processed = rankUsersByCompatibility(currentUser, results);
+      }
+      setUsers(processed);
       setSearchMeta({
         isFuzzyFallback: Boolean(results.isFuzzyFallback),
         suggestions: results.suggestions || [],
@@ -375,6 +390,9 @@ export const DiscoverPage = () => {
               }}
               onReveal={handleReveal}
               showActions={false}
+              onInspectCompatibility={(u, comp) =>
+                setInspectingCompatibility({ user: u, compatibility: comp })
+              }
             />
           ))}
         </div>
@@ -388,6 +406,38 @@ export const DiscoverPage = () => {
           }
           actionLabel={search.trim() ? "Clear Search" : "Reset All Filters"}
           onAction={search.trim() ? () => { setSearch(''); fetchDiscover(''); } : handleResetFilters}
+        />
+      )}
+
+      {/* Interactive Compatibility Breakdown Modal */}
+      {inspectingCompatibility && (
+        <CompatibilityModal
+          isOpen={!!inspectingCompatibility}
+          onClose={() => setInspectingCompatibility(null)}
+          user={inspectingCompatibility.user}
+          compatibility={inspectingCompatibility.compatibility}
+          onSuperSpark={(u) => {
+            setInspectingCompatibility(null);
+            setSuperSparkTarget(u);
+          }}
+          onOpenChat={(uid) => {
+            setInspectingCompatibility(null);
+            navigate(`/app/chats/${uid}`);
+          }}
+        />
+      )}
+
+      {/* SuperSpark with Personal Note Modal */}
+      {superSparkTarget && (
+        <SuperSparkModal
+          isOpen={!!superSparkTarget}
+          onClose={() => setSuperSparkTarget(null)}
+          targetUser={superSparkTarget}
+          compatibility={superSparkTarget.compatibility}
+          onSend={async ({ targetUserId, note }) => {
+            await likeUserApi(targetUserId, { isSuperSpark: true, note });
+            navigate(`/app/chats/${targetUserId}`);
+          }}
         />
       )}
     </div>

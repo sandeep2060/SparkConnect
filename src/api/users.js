@@ -279,39 +279,46 @@ export const updateUserProfileApi = async (updates) => {
   };
 };
 
-// 6. Like / Swipe User in Neon Lakebase Postgres (Real mutual matching & conversation creation)
-export const likeUserApi = async (userId) => {
+// 6. Like / SuperSpark User in Neon Lakebase Postgres (Real mutual matching, SuperSpark priority & note)
+export const likeUserApi = async (userId, options = {}) => {
   const currentUserId = useAuthStore.getState().user?.id;
   if (!currentUserId || !userId || currentUserId === userId) {
     return { success: false, isMatch: false };
   }
 
   let isMatch = false;
+  const isSuperSpark = Boolean(options.isSuperSpark);
+  const noteText = options.note || '';
+
   try {
     const sql = getNeonSql();
 
     // Check if partner already liked the current user (Mutual Match!)
     const checkRows = await sql`
       SELECT id FROM swipes
-      WHERE user_id = ${userId} AND target_user_id = ${currentUserId} AND action = 'like'
+      WHERE user_id = ${userId} AND target_user_id = ${currentUserId} AND action IN ('like', 'superspark')
       LIMIT 1;
     `;
     isMatch = checkRows.length > 0;
 
-    // Record or update this like
+    const action = isSuperSpark ? 'superspark' : 'like';
+
+    // Record or update this like / superspark
     await sql`
       INSERT INTO swipes (user_id, target_user_id, action, is_match, created_at)
-      VALUES (${currentUserId}, ${userId}, 'like', ${isMatch}, NOW())
+      VALUES (${currentUserId}, ${userId}, ${action}, ${isMatch}, NOW())
       ON CONFLICT (user_id, target_user_id) 
-      DO UPDATE SET action = 'like', is_match = ${isMatch}, created_at = NOW();
+      DO UPDATE SET action = ${action}, is_match = ${isMatch}, created_at = NOW();
     `;
 
-    // If mutual match, update the other swipe & ensure a conversation row exists!
-    if (isMatch) {
-      await sql`
-        UPDATE swipes SET is_match = TRUE
-        WHERE user_id = ${userId} AND target_user_id = ${currentUserId};
-      `;
+    // If mutual match or SuperSpark has an opener note, ensure conversation row exists
+    if (isMatch || (isSuperSpark && noteText)) {
+      if (isMatch) {
+        await sql`
+          UPDATE swipes SET is_match = TRUE
+          WHERE user_id = ${userId} AND target_user_id = ${currentUserId};
+        `;
+      }
 
       // Check if conversation row exists
       const convCheck = await sql`
@@ -332,6 +339,19 @@ export const likeUserApi = async (userId) => {
           )
           ON CONFLICT (id) DO NOTHING;
         `;
+      }
+
+      // If SuperSpark had an introductory note, deliver it as the opening message
+      if (isSuperSpark && noteText && convId) {
+        const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}`;
+        const formattedNote = `✨ SuperSpark note: "${noteText}"`;
+        await sql`
+          INSERT INTO messages (
+            id, conversation_id, sender_id, body, text, type, status, created_at
+          ) VALUES (
+            ${msgId}::uuid, ${convId}, ${currentUserId}::uuid, ${formattedNote}, ${formattedNote}, 'text', 'delivered', NOW()
+          );
+        `.catch(() => {});
       }
     }
   } catch (err) {

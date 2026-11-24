@@ -1,9 +1,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, X, Sparkles, MapPin, Lock, Unlock } from 'lucide-react';
+import { Heart, X, Sparkles, MapPin, Lock, Unlock, Flame } from 'lucide-react';
 import VerificationBadge from './VerificationBadge';
 import Badge from './Badge';
 import Button from './Button';
+import { useAuthStore } from '../store/authStore';
+import { calculateSparkCompatibility } from '../utils/compatibilityAlgorithm';
 
 export const ProfileCard = ({
   user,
@@ -12,12 +14,17 @@ export const ProfileCard = ({
   onLike,
   onPass,
   onSuperLike,
+  onInspectCompatibility,
   showActions = true,
   className = '',
 }) => {
   const navigate = useNavigate();
+  const currentUser = useAuthStore((s) => s.user);
 
   if (!user) return null;
+
+  // Compute algorithmic affinity
+  const compatibility = user.compatibility || calculateSparkCompatibility(currentUser, user);
 
   // Determine if stranger mode is active for this card
   const isStranger = (mode === 'stranger' || user.mode === 'stranger') && !user.revealed;
@@ -38,11 +45,20 @@ export const ProfileCard = ({
         group relative rounded-2xl overflow-hidden border border-gray-800 bg-gray-900 
         shadow-lg transition-all duration-300 hover:border-pink-500/40 hover:shadow-2xl 
         hover:shadow-pink-500/10 cursor-pointer flex flex-col
+        ${user.isStandout ? 'ring-2 ring-amber-400/50 shadow-amber-500/10' : ''}
         ${className}
       `}
     >
+      {/* Gale-Shapley Standout Ribbon */}
+      {user.isStandout && (
+        <div className="absolute top-0 inset-x-0 bg-gradient-to-r from-amber-500 via-orange-500 to-pink-500 text-white text-[10px] font-black uppercase tracking-wider py-1 px-3 text-center shadow-lg flex items-center justify-center gap-1.5 z-20">
+          <Sparkles className="w-3 h-3 fill-white" />
+          <span>Today's Most Compatible Standout</span>
+        </div>
+      )}
+
       {/* Top Media Container */}
-      <div className="relative w-full aspect-[3/4] sm:aspect-[4/5] overflow-hidden bg-gray-950">
+      <div className={`relative w-full aspect-[3/4] sm:aspect-[4/5] overflow-hidden bg-gray-950 ${user.isStandout ? 'pt-6' : ''}`}>
         <img
           src={displayPhoto}
           alt={displayName}
@@ -79,12 +95,32 @@ export const ProfileCard = ({
             )}
           </div>
 
-          {user.distance !== undefined && (
-            <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 text-[11px] text-gray-300">
-              <MapPin className="w-3 h-3 text-pink-400" />
-              <span>{user.distance} mi</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Algorithmic Match Score Pill */}
+            {compatibility && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onInspectCompatibility) {
+                    onInspectCompatibility(user, compatibility);
+                  }
+                }}
+                className={`flex items-center gap-1 bg-gradient-to-r ${compatibility.badgeColor} text-white px-2.5 py-0.5 rounded-full text-[10px] font-black shadow-md cursor-pointer hover:scale-105 active:scale-95 transition-transform`}
+                title="Tap to see why you match"
+              >
+                <Flame className="w-3 h-3 fill-white" />
+                <span>{compatibility.score}% Match</span>
+              </button>
+            )}
+
+            {user.distance !== undefined && (
+              <div className="flex items-center gap-1 bg-gray-900/80 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 text-[10px] text-gray-300">
+                <MapPin className="w-2.5 h-2.5 text-pink-400" />
+                <span>{user.distance} mi</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Stranger Overlay Center Callout */}

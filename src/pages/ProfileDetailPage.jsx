@@ -22,8 +22,12 @@ import {
   Check,
   LogOut,
   Flame,
+  Target,
+  Palette,
+  Compass,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { calculateSparkCompatibility } from '../utils/compatibilityAlgorithm';
 import { getUserByIdApi, requestRevealApi, likeUserApi } from '../api/users';
 import {
   getRelationshipStatusApi,
@@ -59,6 +63,7 @@ export const ProfileDetailPage = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const isSelf = id === 'me' || user?.id === currentUser?.id || (currentUser?.username && user?.username === currentUser?.username);
+  const compatibility = user && !isSelf ? calculateSparkCompatibility(currentUser, user) : null;
 
   const handleSignOut = async () => {
     setIsLoggingOut(true);
@@ -491,6 +496,119 @@ export const ProfileDetailPage = () => {
               )}
             </div>
           </div>
+
+          {/* Algorithmic Compatibility Showcase */}
+          {compatibility && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-pink-950/40 via-purple-950/30 to-gray-950 border border-pink-500/30 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
+                    <Flame className="w-4 h-4 fill-pink-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                      <span>SparkSync™ Compatibility</span>
+                      <span className="text-[10px] text-pink-400 font-mono font-bold">
+                        {compatibility.score}% Match
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-purple-200">
+                      {compatibility.tier} • Algorithmic Chemistry
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`px-3 py-1 rounded-full text-xs font-black bg-gradient-to-r ${compatibility.badgeColor} text-white shadow-md`}>
+                  {compatibility.score}% Match
+                </div>
+              </div>
+
+              {/* 4 Synergy Meters */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                <div className="p-2.5 rounded-xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                    <Target className="w-3 h-3 text-rose-400" />
+                    <span>Intent</span>
+                  </div>
+                  <div className="text-sm font-black text-rose-300 font-mono">
+                    {compatibility.breakdown?.intentScore || 90}%
+                  </div>
+                  <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-rose-500 rounded-full" style={{ width: `${compatibility.breakdown?.intentScore || 90}%` }} />
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                    <Palette className="w-3 h-3 text-purple-400" />
+                    <span>Passions</span>
+                  </div>
+                  <div className="text-sm font-black text-purple-300 font-mono">
+                    {compatibility.breakdown?.passionsScore || 85}%
+                  </div>
+                  <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-purple-500 rounded-full" style={{ width: `${compatibility.breakdown?.passionsScore || 85}%` }} />
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-emerald-400" />
+                    <span>Proximity</span>
+                  </div>
+                  <div className="text-sm font-black text-emerald-300 font-mono">
+                    {compatibility.breakdown?.distanceScore || 88}%
+                  </div>
+                  <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${compatibility.breakdown?.distanceScore || 88}%` }} />
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-gray-900/80 border border-gray-800 space-y-1">
+                  <div className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                    <Compass className="w-3 h-3 text-amber-400" />
+                    <span>Lifestyle</span>
+                  </div>
+                  <div className="text-sm font-black text-amber-300 font-mono">
+                    {compatibility.breakdown?.lifestyleScore || 84}%
+                  </div>
+                  <div className="w-full h-1 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full" style={{ width: `${compatibility.breakdown?.lifestyleScore || 84}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Shared Interests Highlights */}
+              {compatibility.sharedInterests?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-gray-400 mr-1">You both love:</span>
+                  {compatibility.sharedInterests.map((interest) => (
+                    <span
+                      key={interest}
+                      className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-pink-500/15 border border-pink-500/30 text-pink-300"
+                    >
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Suggested Opener */}
+              {compatibility.recommendedOpener && (
+                <div className="p-3 rounded-2xl bg-black/40 border border-white/5 flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                      Conversation Suggestion
+                    </div>
+                    <p className="text-xs text-gray-300 italic mt-0.5">
+                      "{compatibility.recommendedOpener}"
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Nature & Chemistry Vibes */}
           {user.nature && user.nature.length > 0 && (
