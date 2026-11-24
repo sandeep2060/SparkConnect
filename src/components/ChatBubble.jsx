@@ -168,7 +168,7 @@ export const ChatBubble = ({
 
       <div
         className={`
-          max-w-[85%] sm:max-w-[75%] rounded-2xl p-3 text-sm shadow-md break-words
+          max-w-[88%] sm:max-w-[75%] rounded-2xl p-2.5 sm:p-3 text-sm shadow-md break-words overflow-hidden
           ${
             isMine
               ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-purple-600 text-white rounded-br-xs shadow-pink-500/15'
@@ -272,22 +272,22 @@ export const ChatBubble = ({
 
         {/* 3. VOICE CLIP AUDIO BUBBLE */}
         {isVoiceClip && (
-          <div className="space-y-1.5 min-w-[220px]">
-            <div className="flex items-center gap-3">
+          <div className="space-y-1.5 min-w-[170px] sm:min-w-[220px]">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setIsPlayingAudio(!isPlayingAudio)}
                 className={`
-                  w-9 h-9 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-md shrink-0
+                  w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-md shrink-0
                   ${isMine ? 'bg-white text-pink-600' : 'bg-pink-500 text-white'}
                 `}
                 aria-label={isPlayingAudio ? 'Pause voice message' : 'Play voice message'}
               >
-                {isPlayingAudio ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                {isPlayingAudio ? <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" /> : <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5" />}
               </button>
 
               {/* Animated Audio Waveform */}
-              <div className="flex-1 flex items-center gap-1 h-6 px-1">
+              <div className="flex-1 flex items-center gap-0.5 sm:gap-1 h-6 px-1">
                 {[40, 75, 50, 90, 60, 30, 80, 45, 95, 70, 35, 65, 85, 40].map((height, idx) => (
                   <span
                     key={idx}

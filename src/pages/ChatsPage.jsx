@@ -112,6 +112,26 @@ export const ChatsPage = () => {
     action: null, // 'block' | 'unblock'
   });
 
+  // Mobile & desktop header options dropdown menu
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(activeChat);
 
@@ -188,7 +208,7 @@ export const ChatsPage = () => {
   useEffect(() => {
     if (!activeChat?.id) return;
 
-    const intervalId = setInterval(async () => {
+    const performSync = async () => {
       try {
         const syncResult = await syncChatMessagesApi(activeChat.id);
         if (!syncResult) return;
@@ -256,9 +276,25 @@ export const ChatsPage = () => {
       } catch (err) {
         // silent fail on polling error
       }
+    };
+
+    // Instant sync when tab regains focus or visibility
+    const handleFocus = () => performSync();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    const intervalId = setInterval(() => {
+      // Faster 2s polling while tab is active, 6s while in background
+      if (document.visibilityState === 'visible') {
+        performSync();
+      }
     }, 2000);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, [activeChat?.id, currentUser?.id, partnerDisplayName]);
 
   // Periodic sidebar conversation sync (every 5 seconds to update unread counts and streaks across threads)
@@ -729,7 +765,16 @@ export const ChatsPage = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-120px)] md:h-[calc(100vh-140px)] flex rounded-2xl overflow-hidden border border-gray-800 bg-gray-900 shadow-2xl">
+    <div
+      className={`
+        flex rounded-none sm:rounded-2xl overflow-hidden border-0 sm:border border-gray-800 bg-gray-900 sm:shadow-2xl
+        ${
+          routeChatId
+            ? 'h-[100dvh] md:h-[calc(100vh-140px)]'
+            : 'h-[calc(100dvh-5.5rem)] md:h-[calc(100vh-140px)]'
+        }
+      `}
+    >
       {/* LEFT SIDEBAR: Conversation List */}
       <div
         className={`
@@ -948,13 +993,13 @@ export const ChatsPage = () => {
               </div>
 
               {/* Header Right Actions */}
-              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                 {/* SNAPSTREAK BADGE / PILL */}
                 <button
                   type="button"
                   onClick={() => setIsStreakModalOpen(true)}
                   className={`
-                    flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black transition-all min-h-touch cursor-pointer shadow-sm
+                    flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-black transition-all min-h-touch cursor-pointer shadow-sm shrink-0
                     ${
                       activeChat.streakCount > 0
                         ? activeChat.streakExpiringSoon
@@ -975,7 +1020,7 @@ export const ChatsPage = () => {
                   <span>
                     {activeChat.streakCount > 0
                       ? `${activeChat.streakCount}d`
-                      : 'Streak 0'}
+                      : '0d'}
                   </span>
                   {activeChat.streakExpiringSoon && (
                     <span className="text-xs" title="Expiring soon!">
@@ -984,24 +1029,24 @@ export const ChatsPage = () => {
                   )}
                 </button>
 
-                {/* SNAP BACK (SIMULATE PARTNER MUTUAL MSG) */}
+                {/* SNAP BACK (SIMULATE PARTNER MUTUAL MSG - Tablet & Desktop) */}
                 <button
                   type="button"
                   onClick={handleSimulatePartnerReply}
                   disabled={isSimulatingPartner || partnerRelationship.isBlocked}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all shadow-sm min-h-touch cursor-pointer"
-                  title="Simulate partner snapping back (mutual messaging maintains & increments streak!)"
+                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-orange-500/15 hover:from-amber-500/25 hover:to-orange-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all shadow-sm min-h-touch cursor-pointer"
+                  title="Simulate partner snapping back"
                 >
                   <Zap className={`w-3.5 h-3.5 text-amber-400 ${isSimulatingPartner ? 'animate-spin' : ''}`} />
-                  <span className="hidden sm:inline">Snap Back</span>
+                  <span className="hidden md:inline">Snap Back</span>
                 </button>
 
-                {/* DISAPPEARING MESSAGES BUTTON */}
+                {/* DISAPPEARING MESSAGES BUTTON (Tablet & Desktop) */}
                 <button
                   type="button"
                   onClick={() => setIsDisappearingModalOpen(true)}
                   className={`
-                    flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all min-h-touch cursor-pointer
+                    hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all min-h-touch cursor-pointer
                     ${
                       activeChat.disappearingSetting && activeChat.disappearingSetting !== 'off'
                         ? 'bg-pink-500/20 border border-pink-500/40 text-pink-300 shadow-sm'
@@ -1011,9 +1056,11 @@ export const ChatsPage = () => {
                   title="Configure disappearing messages timer"
                 >
                   <Timer className="w-3.5 h-3.5 text-pink-400" />
-                  <span className="hidden sm:inline">
+                  <span className="hidden lg:inline">
                     {activeChat.disappearingSetting === 'after_seen'
                       ? 'After seen'
+                      : activeChat.disappearingSetting === '10s'
+                      ? '10s'
                       : activeChat.disappearingSetting === '24h'
                       ? '24h'
                       : activeChat.disappearingSetting === '7d'
@@ -1024,20 +1071,20 @@ export const ChatsPage = () => {
                   </span>
                 </button>
 
-                {/* SAFETY CHECK-IN BUTTON */}
+                {/* SAFETY CHECK-IN BUTTON (Desktop) */}
                 <button
                   type="button"
                   onClick={() => setIsSafetyModalOpen(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 text-xs font-bold transition-all shadow-sm min-h-touch cursor-pointer"
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/40 text-purple-300 text-xs font-bold transition-all shadow-sm min-h-touch cursor-pointer"
                   title="Share location and safety ping with trusted contact"
                 >
                   <ShieldCheck className="w-4 h-4 text-purple-400" />
-                  <span className="hidden lg:inline">Safety Check-in</span>
+                  <span className="hidden xl:inline">Safety</span>
                 </button>
 
                 {/* Friend Status / Request Action */}
                 {partnerRelationship.friendshipStatus === 'friends' && (
-                  <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1.5 rounded-xl border border-emerald-500/30">
+                  <span className="hidden md:flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-1.5 rounded-xl border border-emerald-500/30">
                     <UserCheck className="w-3.5 h-3.5" />
                     <span>Friends</span>
                   </span>
@@ -1046,25 +1093,25 @@ export const ChatsPage = () => {
                   <button
                     type="button"
                     onClick={handleSendFriendRequestFromChat}
-                    className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-purple-300 bg-purple-950/60 hover:bg-purple-900 px-2.5 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer"
+                    className="hidden md:flex items-center gap-1 text-[11px] font-bold text-purple-300 bg-purple-950/60 hover:bg-purple-900 px-2.5 py-1.5 rounded-xl border border-purple-500/30 transition-all cursor-pointer"
                     title="Send friend request"
                   >
                     <UserPlus className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Add Friend</span>
+                    <span className="hidden lg:inline">Add Friend</span>
                   </button>
                 )}
                 {partnerRelationship.friendshipStatus === 'pending_sent' && (
-                  <span className="hidden sm:flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/60 px-2.5 py-1.5 rounded-xl border border-amber-500/30">
+                  <span className="hidden md:flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/60 px-2.5 py-1.5 rounded-xl border border-amber-500/30">
                     <span>Req Sent</span>
                   </span>
                 )}
 
-                {/* Block / Unblock User Button */}
+                {/* Block / Unblock User Button (Desktop) */}
                 <button
                   type="button"
                   onClick={handleToggleBlockPartner}
                   title={partnerRelationship.isBlocked ? 'Unblock member' : 'Block member'}
-                  className={`p-2 rounded-xl transition-all min-h-touch min-w-touch flex items-center justify-center cursor-pointer ${
+                  className={`hidden md:flex p-2 rounded-xl transition-all min-h-touch min-w-touch items-center justify-center cursor-pointer ${
                     partnerRelationship.isBlocked
                       ? 'text-amber-400 bg-amber-950/50 border border-amber-500/40 hover:bg-amber-900/50'
                       : 'text-gray-400 hover:text-rose-400 hover:bg-gray-800'
@@ -1073,15 +1120,135 @@ export const ChatsPage = () => {
                   <Ban className="w-4 h-4" />
                 </button>
 
-                {/* Report User Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsReportModalOpen(true)}
-                  title="Report user"
-                  className="p-2 rounded-xl text-gray-400 hover:text-rose-400 hover:bg-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                </button>
+                {/* Responsive Actions Menu (Always visible on mobile, accessible on desktop) */}
+                <div className="relative shrink-0" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    className={`p-2 rounded-xl transition-colors min-h-touch min-w-touch flex items-center justify-center cursor-pointer ${
+                      isMenuOpen
+                        ? 'text-white bg-gray-800 ring-1 ring-pink-500/40'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                    }`}
+                    title="Chat options"
+                    aria-label="Chat options"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+
+                  {/* Mobile & Desktop Dropdown Action Sheet */}
+                  {isMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-gray-950/98 backdrop-blur-2xl border border-gray-800 shadow-2xl p-1.5 z-50 animate-slide-down space-y-1">
+                      {/* Snap Back Simulation */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          handleSimulatePartnerReply();
+                        }}
+                        disabled={isSimulatingPartner || partnerRelationship.isBlocked}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-amber-300 hover:bg-amber-950/30 transition-colors cursor-pointer"
+                      >
+                        <Zap className={`w-4 h-4 text-amber-400 shrink-0 ${isSimulatingPartner ? 'animate-spin' : ''}`} />
+                        <div className="min-w-0">
+                          <div className="font-bold text-white">Snap Back</div>
+                          <div className="text-[10px] text-amber-400/80">Simulate partner reply & streak</div>
+                        </div>
+                      </button>
+
+                      {/* Disappearing Messages Settings */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsDisappearingModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-pink-300 hover:bg-pink-950/30 transition-colors cursor-pointer"
+                      >
+                        <Timer className="w-4 h-4 text-pink-400 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-white">Disappearing Messages</div>
+                          <div className="text-[10px] text-pink-400/80">
+                            Current:{' '}
+                            {activeChat.disappearingSetting && activeChat.disappearingSetting !== 'off'
+                              ? activeChat.disappearingSetting === 'after_seen'
+                                ? 'After seen'
+                                : activeChat.disappearingSetting === '10s'
+                                ? '10 seconds 🔥'
+                                : activeChat.disappearingSetting
+                              : 'Off'}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Safety Check-in */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsSafetyModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-purple-300 hover:bg-purple-950/30 transition-colors cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-bold text-white">Safety Check-in</div>
+                          <div className="text-[10px] text-purple-400/80">Share location with contact</div>
+                        </div>
+                      </button>
+
+                      {/* Add Friend Trigger */}
+                      {partnerRelationship.friendshipStatus === 'none' && !partnerRelationship.isBlocked && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            handleSendFriendRequestFromChat();
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-gray-200 hover:bg-gray-900 transition-colors cursor-pointer"
+                        >
+                          <UserPlus className="w-4 h-4 text-purple-400 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-bold text-white">Add Friend</div>
+                            <div className="text-[10px] text-gray-400">Send friend request</div>
+                          </div>
+                        </button>
+                      )}
+
+                      <div className="border-t border-gray-800/80 my-1" />
+
+                      {/* Block / Unblock User */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          handleToggleBlockPartner();
+                        }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
+                          partnerRelationship.isBlocked
+                            ? 'text-amber-400 hover:bg-amber-950/30'
+                            : 'text-gray-300 hover:bg-gray-900 hover:text-rose-400'
+                        }`}
+                      >
+                        <Ban className="w-4 h-4 shrink-0" />
+                        <span>{partnerRelationship.isBlocked ? 'Unblock Member' : 'Block Member'}</span>
+                      </button>
+
+                      {/* Report User */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setIsReportModalOpen(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-xs font-semibold text-gray-400 hover:text-rose-400 hover:bg-gray-900 transition-colors cursor-pointer"
+                      >
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Report Member</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1365,7 +1532,7 @@ export const ChatsPage = () => {
                 </div>
               </div>
             ) : (
-              <div className="p-3 bg-gray-950/90 border-t border-gray-800">
+              <div className="p-2.5 sm:p-3 bg-gray-950/95 border-t border-gray-800 pb-safe">
                 {isRecordingVoice ? (
                 /* LIVE VOICE RECORDING MODE */
                 <div className="flex items-center justify-between gap-3 bg-gray-900 p-2.5 rounded-2xl border border-pink-500/40 animate-fade-in">
@@ -1430,17 +1597,17 @@ export const ChatsPage = () => {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-pink-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
+                          className="p-2 sm:p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-pink-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
                           title="Choose photo from device gallery"
                         >
                           <Image className="w-4 h-4" />
                         </button>
 
-                        {/* View-Once & Ephemeral Attachment Options */}
+                        {/* View-Once & Ephemeral Attachment Options (Tablet & Desktop) */}
                         <button
                           type="button"
                           onClick={() => setShowAttachmentMenu(!showAttachmentMenu)}
-                          className={`p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer ${
+                          className={`hidden sm:flex p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch items-center justify-center shrink-0 cursor-pointer ${
                             showAttachmentMenu ? 'text-pink-400 border-pink-500/50 bg-gray-800' : ''
                           }`}
                           title="View-Once & Anti-Screenshot options"
@@ -1452,18 +1619,18 @@ export const ChatsPage = () => {
                         <button
                           type="button"
                           onClick={() => setIsRecordingVoice(true)}
-                          className="p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
+                          className="p-2 sm:p-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-purple-400 border border-gray-800 transition-colors min-h-touch min-w-touch flex items-center justify-center shrink-0 cursor-pointer"
                           title="Record voice note"
                         >
                           <Mic className="w-4 h-4" />
                         </button>
 
-                        {/* Conversation Starter Generator (natural human social phrasing) */}
+                        {/* Conversation Starter Generator (Tablet & Desktop) */}
                         <button
                           type="button"
                           onClick={handleGenerateIcebreaker}
                           disabled={isGeneratingIcebreaker}
-                          className="p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-pink-500/10 hover:from-amber-500/20 hover:to-pink-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 transition-all min-h-touch min-w-touch flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                          className="hidden sm:flex p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-pink-500/10 hover:from-amber-500/20 hover:to-pink-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 transition-all min-h-touch min-w-touch items-center justify-center gap-1.5 shrink-0 cursor-pointer"
                           title="Conversation Starter - Suggest a fun opener"
                         >
                           <Sparkles
@@ -1476,16 +1643,16 @@ export const ChatsPage = () => {
                       </>
                     )}
 
-                    {/* Text Input - Expands to full width when buttons are hidden */}
+                    {/* Text Input - 16px on mobile prevents iOS Safari auto-zoom, crisp 14px on desktop */}
                     <input
                       type="text"
                       placeholder={`Message ${partnerDisplayName}...`}
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
-                      className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500 transition-all"
+                      className="flex-1 min-h-[44px] px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-base sm:text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-pink-500 transition-all min-w-0"
                     />
 
-                  {/* INSTANT SEND BUTTON - Prominent & Visible on Mobile & Desktop */}
+                    {/* INSTANT SEND BUTTON - Prominent & Visible on Mobile & Desktop */}
                     <button
                       type="submit"
                       disabled={!inputText.trim() || isSending}

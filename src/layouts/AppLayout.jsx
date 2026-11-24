@@ -37,18 +37,24 @@ export const AppLayout = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header Navbar */}
-        <Navbar title={currentTitle} />
+        {/* Top Header Navbar (Hidden on mobile inside chat thread to give full screen to conversation) */}
+        <div className={isIndividualChat ? 'hidden md:block' : 'block'}>
+          <Navbar title={currentTitle} />
+        </div>
 
         {/* Scrollable Viewport */}
         <main
           className={`flex-1 overflow-y-auto ${
-            isIndividualChat ? 'pb-0' : isMapPage ? 'pb-16 md:pb-2' : 'pb-20 md:pb-8'
+            isIndividualChat ? 'pb-0 overflow-hidden' : isMapPage ? 'pb-16 md:pb-2' : 'pb-20 md:pb-8'
           }`}
         >
           <div
             className={`max-w-7xl mx-auto ${
-              isMapPage ? 'px-2 sm:px-4 py-2' : 'px-3 sm:px-6 lg:px-8 py-4 sm:py-6'
+              isIndividualChat
+                ? 'p-0 sm:px-4 sm:py-3 h-full sm:h-auto'
+                : isMapPage
+                ? 'px-2 sm:px-4 py-2'
+                : 'px-3 sm:px-6 lg:px-8 py-4 sm:py-6'
             }`}
           >
             <Outlet />
